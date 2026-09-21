@@ -35,6 +35,7 @@ import {
   TimeAllocation,
   AssessmentCriterion,
   AdministrationWorkspace,
+  LearningExperiencePhase,
 } from '../../types';
 import {
   validateLearningPlan,
@@ -42,8 +43,12 @@ import {
   createAIDraftLearningPlan,
   confirmLearningPlan,
   isSubstantiveLearningPlanChange,
+  resolveLearningPlanObjectives,
+  resolveLearningPlanAllocatedJP,
+  LEARNING_EXPERIENCE_PHASE_LABELS,
 } from '../../services/learningPlanService';
 import { generateLearningPlanWithAI } from '../../services/aiService';
+import { getCurriculumTypeFromSetting } from '../../services/curriculumRouter';
 import { generateModulAjar } from '../../services/documentEngine/generators/modulAjarGenerator';
 import { generatePdfDocument } from '../../services/documentEngine/renderers/pdf/pdfDocGenerators';
 import { DocumentGenerationContext } from '../../services/documentEngine/types';
@@ -74,10 +79,10 @@ export function resolveAvailableScopes(
   const availableAtps = (atpData?.items || []).filter(
     (a) => a.tpId && availableTps.some((t) => t.id === a.tpId)
   );
-
-  if (availableAtps.length > 0) {
-    return availableAtps.map((atpItem, index) => {
+  const representedTpIds = new Set<string>();
+  const atpScopes = availableAtps.map((atpItem, index) => {
       const linkedTp = availableTps.find((t) => t.id === atpItem.tpId)!;
+      representedTpIds.add(linkedTp.id);
       const stepNo = atpItem.stepNumber || index + 1;
       const material = atpItem.materialScope || linkedTp.contentScope || linkedTp.statement;
       const allocatedJP = atpItem.allocatedJP ?? atpItem.jp ?? null;
@@ -96,9 +101,8 @@ export function resolveAvailableScopes(
         jp: allocatedJP,
       };
     });
-  }
 
-  return availableTps.map((tpItem) => {
+  const singleTpScopes = availableTps.filter((tpItem) => !representedTpIds.has(tpItem.id)).map((tpItem) => {
     return {
       id: tpItem.id,
       type: 'SINGLE_TP',
@@ -111,6 +115,7 @@ export function resolveAvailableScopes(
       jp: null,
     };
   });
+  return [...atpScopes, ...singleTpScopes];
 }
 
 interface LearningPlanManagerProps {
@@ -168,6 +173,11 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
       assessmentCriteria,
     });
   }, [activePlan, academicSetting, tp, atp, timeAllocations, assessmentCriteria]);
+  const curriculumType = getCurriculumTypeFromSetting(academicSetting);
+  const activePlanJpResolution = useMemo(() => {
+    if (!activePlan) return null;
+    return resolveLearningPlanAllocatedJP(activePlan, { atp, timeAllocations });
+  }, [activePlan, atp, timeAllocations]);
 
   const showNotification = (type: 'success' | 'error' | 'info', text: string) => {
     setNotification({ type, text });
@@ -180,7 +190,7 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
   const handleCreateNewManual = () => {
     const newPlan = createEmptyLearningPlan({
       academicSetting,
-      curriculumType: academicSetting.curriculum?.includes('2013') || academicSetting.curriculum?.includes('K13') ? 'K13' : 'KURIKULUM_MERDEKA',
+      curriculumType,
       tpIds: [],
       atpItemIds: [],
       context: { tp, atp },
@@ -197,6 +207,26 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
 
   // Trigger AI Assisted Draft with strict canonical scope (0 / 1 / >1 rule)
   const handleCreateAIDraftClick = () => {
+    if (curriculumType === 'K13') {
+      showNotification('error', 'Draf AI Modul Ajar/RPP K13 belum didukung pada workflow ini. Gunakan pengisian manual berbasis KD/IPK.');
+      return;
+    }
+    if (curriculumType !== 'KURIKULUM_MERDEKA') {
+      showNotification('error', 'Kurikulum belum terselesaikan. Draf AI tidak dibuat agar tidak diarahkan diam-diam ke Kurikulum Merdeka.');
+      return;
+    }
+    if (tp?.workflowStatus && tp.workflowStatus !== 'SIAP' && tp.workflowStatus !== 'READY' && tp.workflowStatus !== 'COMPLETE') {
+      showNotification('error', `TP belum siap untuk AI (${tp.workflowStatus}). Tinjau TP terlebih dahulu.`);
+      return;
+    }
+    if (tp?.needsReview) {
+      showNotification('error', `TP perlu ditinjau sebelum AI draft: ${tp.reviewReason || 'status needsReview aktif'}.`);
+      return;
+    }
+    if (atp?.needsReview) {
+      showNotification('error', `ATP perlu ditinjau sebelum AI draft: ${atp.reviewReason || 'status needsReview aktif'}.`);
+      return;
+    }
     const scopes = resolveAvailableScopes(tp, atp);
 
     if (scopes.length === 0) {
@@ -232,7 +262,7 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
 
       const draftPlan = createAIDraftLearningPlan({
         academicSetting,
-        curriculumType: academicSetting.curriculum?.includes('2013') || academicSetting.curriculum?.includes('K13') ? 'K13' : 'KURIKULUM_MERDEKA',
+        curriculumType,
         tpIds: scope.linkedTpIds,
         atpItemIds: scope.linkedAtpItemIds,
         aiDraft: aiDraftResult,
@@ -248,7 +278,7 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
       );
     } catch (err: any) {
       console.error('Failed to generate AI Learning Plan:', err);
-      showNotification('error', `Gagal menyusun Draf AI: ${err.message || 'Terjadi kesalahan'}. Tidak ada draf yang dibuat.`);
+      showNotification('error', `Draf AI tidak dibuat. Rancangan yang sedang terlihat adalah rancangan sebelumnya. ${err.message || 'Terjadi kesalahan'}`);
     } finally {
       setIsGeneratingAI(false);
     }
@@ -265,6 +295,7 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
 
     if (activePlan.status === 'SIAP' && isSubstantiveLearningPlanChange(activePlan, candidate)) {
       candidate.status = 'DRAFT';
+      candidate.confirmedAt = undefined;
       showNotification(
         'info',
         'Status Modul Ajar diperbarui menjadi DRAFT karena terdapat perubahan konten pedagogis. Silakan tinjau dan konfirmasi SIAP kembali.'
@@ -272,6 +303,35 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
     }
 
     onSavePlan(candidate);
+  };
+
+  const resolveSingleAtpForTp = (tpId: string): string[] => {
+    const matches = (atp?.items || []).filter((item) => item.tpId === tpId);
+    return matches.length === 1 ? [matches[0].id] : [];
+  };
+
+  const handleUpdateTpSelection = (tpId: string, checked: boolean) => {
+    if (!activePlan) return;
+    const nextTpIds = checked
+      ? Array.from(new Set([...(activePlan.tpIds || []), tpId]))
+      : (activePlan.tpIds || []).filter((id) => id !== tpId);
+    const removedTpIds = new Set((activePlan.tpIds || []).filter((id) => !nextTpIds.includes(id)));
+    const autoAtpIds = checked ? resolveSingleAtpForTp(tpId) : [];
+    const nextAtpIds = Array.from(
+      new Set([
+        ...(activePlan.atpItemIds || []).filter((id) => {
+          const item = (atp?.items || []).find((candidate) => candidate.id === id);
+          return !item?.tpId || !removedTpIds.has(item.tpId);
+        }),
+        ...autoAtpIds,
+      ])
+    );
+    const objectives = resolveLearningPlanObjectives({
+      tpIds: nextTpIds,
+      tp,
+      curriculumType,
+    }).objectives;
+    handleUpdateActivePlan({ tpIds: nextTpIds, atpItemIds: nextAtpIds, objectives });
   };
 
   // Confirm Plan (Set to SIAP)
@@ -482,7 +542,7 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
                             {plan.title || plan.topic || 'Rancangan Tanpa Judul'}
                           </h4>
                           <p className="text-xs text-slate-500 mt-0.5">
-                            {plan.tpIds.length} TP terpilih • {plan.allocatedJP ? `${plan.allocatedJP} JP` : 'Belum ada JP'}
+                            {plan.tpIds.length} TP terpilih • {resolveLearningPlanAllocatedJP(plan, { atp, timeAllocations }).allocatedJP ? `${resolveLearningPlanAllocatedJP(plan, { atp, timeAllocations }).allocatedJP} JP` : 'Belum ada JP'}
                           </p>
                         </div>
                         <span
@@ -807,10 +867,7 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
                                     type="checkbox"
                                     checked={isChecked}
                                     onChange={(e) => {
-                                      const nextIds = e.target.checked
-                                        ? [...activePlan.tpIds, t.id]
-                                        : activePlan.tpIds.filter((id) => id !== t.id);
-                                      handleUpdateActivePlan({ tpIds: nextIds });
+                                      handleUpdateTpSelection(t.id, e.target.checked);
                                     }}
                                     className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
                                   />
@@ -827,6 +884,48 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
                           </div>
                         ) : (
                           <p className="text-xs text-rose-600 italic">Data TP belum disusun di workspace ini.</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-2">
+                          Tahapan ATP Terkait
+                        </label>
+                        {atp?.items && atp.items.length > 0 ? (
+                          <div className="space-y-2 max-h-48 overflow-y-auto p-2 border border-slate-200 rounded-lg bg-slate-50">
+                            {atp.items.map((item) => {
+                              const linkedTp = tp?.items?.find((t) => t.id === item.tpId);
+                              const isChecked = (activePlan.atpItemIds || []).includes(item.id);
+                              return (
+                                <label key={item.id} className="flex items-start gap-2.5 p-2 rounded-md cursor-pointer border bg-white/70 border-slate-200 hover:bg-white">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      const nextAtpIds = e.target.checked
+                                        ? Array.from(new Set([...(activePlan.atpItemIds || []), item.id]))
+                                        : (activePlan.atpItemIds || []).filter((id) => id !== item.id);
+                                      const nextTpIds = item.tpId && e.target.checked
+                                        ? Array.from(new Set([...(activePlan.tpIds || []), item.tpId]))
+                                        : activePlan.tpIds;
+                                      const objectives = resolveLearningPlanObjectives({ tpIds: nextTpIds, tp, curriculumType }).objectives;
+                                      handleUpdateActivePlan({ atpItemIds: nextAtpIds, tpIds: nextTpIds, objectives });
+                                    }}
+                                    className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
+                                  />
+                                  <div className="text-xs">
+                                    <span className="font-bold text-slate-800 mr-1.5">Langkah {item.stepNumber || '-'}</span>
+                                    <span className="text-slate-700">{item.materialScope || item.tpStatement || linkedTp?.statement || 'ATP belum berisi materi'}</span>
+                                    <span className="text-slate-400 block mt-0.5">
+                                      {linkedTp?.code || 'TP'} • {item.jp ?? item.allocatedJP ?? 'JP belum ditentukan'} JP
+                                    </span>
+                                  </div>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500 italic">ATP belum tersedia. TP tetap dapat dipilih tanpa ATP.</p>
                         )}
                       </div>
 
@@ -864,6 +963,80 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
                   {/* Section 3: Langkah Kegiatan Pembelajaran */}
                   {editorSection === 'activities' && (
                     <div className="space-y-4">
+                      <div className="border border-blue-200 rounded-lg p-4 bg-blue-50/60 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-blue-900">
+                            Pengalaman Belajar Canonical 2026
+                          </label>
+                          <button
+                            onClick={() => {
+                              const curr = activePlan.learningExperiences || [];
+                              handleUpdateActivePlan({
+                                learningExperiences: [
+                                  ...curr,
+                                  { id: `exp-${Date.now()}`, phase: 'UNDERSTAND', description: '', durationMinutes: undefined },
+                                ],
+                              });
+                            }}
+                            className="text-xs text-blue-700 hover:text-blue-900 font-semibold inline-flex items-center gap-1"
+                          >
+                            <Plus className="w-3.5 h-3.5" /> Tambah Pengalaman
+                          </button>
+                        </div>
+
+                        {(activePlan.learningExperiences || []).map((exp, idx) => (
+                          <div key={exp.id || idx} className="grid grid-cols-1 md:grid-cols-[160px_1fr_90px_32px] gap-2 items-center">
+                            <select
+                              value={exp.phase}
+                              onChange={(e) => {
+                                const list = [...(activePlan.learningExperiences || [])];
+                                list[idx] = { ...list[idx], phase: e.target.value as LearningExperiencePhase };
+                                handleUpdateActivePlan({ learningExperiences: list });
+                              }}
+                              className="px-2 py-1.5 text-xs border border-blue-200 rounded-md bg-white"
+                            >
+                              <option value="UNDERSTAND">Memahami</option>
+                              <option value="APPLY">Mengaplikasi</option>
+                              <option value="REFLECT">Merefleksi</option>
+                            </select>
+                            <input
+                              type="text"
+                              value={exp.description}
+                              onChange={(e) => {
+                                const list = [...(activePlan.learningExperiences || [])];
+                                list[idx] = { ...list[idx], description: e.target.value };
+                                handleUpdateActivePlan({ learningExperiences: list });
+                              }}
+                              placeholder="Deskripsi pengalaman belajar..."
+                              className="px-3 py-1.5 text-xs border border-blue-200 rounded-md bg-white"
+                            />
+                            <input
+                              type="number"
+                              value={exp.durationMinutes || ''}
+                              onChange={(e) => {
+                                const list = [...(activePlan.learningExperiences || [])];
+                                list[idx] = { ...list[idx], durationMinutes: e.target.value ? Number(e.target.value) : undefined };
+                                handleUpdateActivePlan({ learningExperiences: list });
+                              }}
+                              placeholder="Menit"
+                              className="px-2 py-1.5 text-xs border border-blue-200 rounded-md bg-white text-center"
+                            />
+                            <button
+                              onClick={() => {
+                                const list = (activePlan.learningExperiences || []).filter((_, i) => i !== idx);
+                                handleUpdateActivePlan({ learningExperiences: list });
+                              }}
+                              className="p-1 text-slate-400 hover:text-rose-500"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                        {(activePlan.learningExperiences || []).length === 0 && (
+                          <p className="text-xs text-blue-700 italic">Belum ada Pengalaman Belajar canonical. Tambahkan atau gunakan draf AI, tanpa membuat fallback palsu.</p>
+                        )}
+                      </div>
+
                       {/* Pendahuluan */}
                       <div className="border border-slate-200 rounded-lg p-4 bg-slate-50/50 space-y-2">
                         <div className="flex items-center justify-between">
@@ -1239,7 +1412,7 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
 
                     <div className="grid grid-cols-2 gap-2 text-xs border-b pb-3 text-slate-600">
                       <div>Topik: <span className="font-semibold text-slate-800">{activePlan.topic || activePlan.title}</span></div>
-                      <div>Alokasi Waktu: <span className="font-semibold text-slate-800">{activePlan.allocatedJP ? `${activePlan.allocatedJP} JP` : '-'}</span></div>
+                      <div>Alokasi Waktu: <span className="font-semibold text-slate-800">{activePlanJpResolution?.allocatedJP ? `${activePlanJpResolution.allocatedJP} JP` : '-'}</span></div>
                       <div>Guru: <span className="font-semibold text-slate-800">{profile.name}</span></div>
                       <div>Status: <span className="font-semibold text-slate-800">{activePlan.status} ({activePlan.sourceType})</span></div>
                     </div>
@@ -1259,18 +1432,32 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
                       <div>
                         <span className="font-bold text-slate-800 block">II. KEGIATAN PEMBELAJARAN:</span>
                         <div className="mt-1 pl-3 space-y-1 text-slate-700">
-                          <div>
-                            <span className="font-semibold">Pendahuluan:</span>{' '}
-                            {(activePlan.learningSteps?.opening || []).map((s) => s.description).join('; ') || '-'}
-                          </div>
-                          <div>
-                            <span className="font-semibold">Inti:</span>{' '}
-                            {(activePlan.learningSteps?.core || []).map((s) => s.description).join('; ') || '-'}
-                          </div>
-                          <div>
-                            <span className="font-semibold">Penutup:</span>{' '}
-                            {(activePlan.learningSteps?.closing || []).map((s) => s.description).join('; ') || '-'}
-                          </div>
+                          {(activePlan.learningExperiences || []).length > 0 ? (
+                            (['UNDERSTAND', 'APPLY', 'REFLECT'] as const).map((phase) => (
+                              <div key={phase}>
+                                <span className="font-semibold">{LEARNING_EXPERIENCE_PHASE_LABELS[phase]}:</span>{' '}
+                                {(activePlan.learningExperiences || [])
+                                  .filter((exp) => exp.phase === phase)
+                                  .map((exp) => `${exp.description}${exp.durationMinutes ? ` (${exp.durationMinutes} menit)` : ''}`)
+                                  .join('; ') || '-'}
+                              </div>
+                            ))
+                          ) : (
+                            <>
+                              <div>
+                                <span className="font-semibold">Pendahuluan:</span>{' '}
+                                {(activePlan.learningSteps?.opening || []).map((s) => s.description).join('; ') || '-'}
+                              </div>
+                              <div>
+                                <span className="font-semibold">Inti:</span>{' '}
+                                {(activePlan.learningSteps?.core || []).map((s) => s.description).join('; ') || '-'}
+                              </div>
+                              <div>
+                                <span className="font-semibold">Penutup:</span>{' '}
+                                {(activePlan.learningSteps?.closing || []).map((s) => s.description).join('; ') || '-'}
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
 

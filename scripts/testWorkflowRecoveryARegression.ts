@@ -4,9 +4,16 @@ import {
   createEmptyLearningPlan,
   validateLearningPlan,
   resolveLearningPlanAllocatedJP,
+  resolveLearningPlanObjectives,
+  normalizeAIAssessmentPlan,
+  normalizeAIReflection,
+  normalizeDeepLearningContext,
+  isSubstantiveLearningPlanChange,
   normalizeLearningExperiencePhase,
 } from '../src/services/learningPlanService';
 import { AcademicSetting, TPData, ATPData, LearningPlan } from '../src/types';
+import { getCurriculumTypeFromSetting } from '../src/services/curriculumRouter';
+import { resolveAvailableScopes } from '../src/components/administration/LearningPlanManager';
 
 console.log('=== RUNNING WORKFLOW RECOVERY A REGRESSION SUITE ===\n');
 
@@ -159,6 +166,185 @@ runTest('Real JP Resolution: resolveLearningPlanAllocatedJP resolves from canoni
   assert.strictEqual(resExplicit.source, 'EXPLICIT_PLAN');
 });
 
+runTest('Recovery A.2 Test 1: TP ids resolve canonical objectives in selected order and remove unchecked objective authority', () => {
+  const checked = resolveLearningPlanObjectives({ tpIds: ['tp-102', 'tp-101'], tp: mockTpData, curriculumType: 'KURIKULUM_MERDEKA' });
+  assert.deepStrictEqual(checked.objectives.map((o) => o.tpId), ['tp-102', 'tp-101']);
+  assert.strictEqual(checked.objectives[0].statement, mockTpData.items[1].statement);
+
+  const unchecked = resolveLearningPlanObjectives({ tpIds: ['tp-101'], tp: mockTpData, curriculumType: 'KURIKULUM_MERDEKA' });
+  assert.deepStrictEqual(unchecked.objectives.map((o) => o.tpId), ['tp-101']);
+  assert.strictEqual(unchecked.objectives.some((o) => o.tpId === 'tp-102'), false);
+});
+
+runTest('Recovery A.2 Test 2: stale stored objectives cannot override current canonical TP text', () => {
+  const planWithStaleObjective: LearningPlan = {
+    id: 'lp-stale-objective',
+    academicSettingId: 'setting-1',
+    curriculumType: 'KURIKULUM_MERDEKA',
+    sourceType: 'MANUAL',
+    status: 'DRAFT',
+    tpIds: ['tp-101'],
+    atpItemIds: [],
+    title: 'Plan stale',
+    topic: 'Teks',
+    objectives: [{ id: 'tp-101', tpId: 'tp-101', statement: 'OLD STALE STATEMENT' }],
+    learningExperiences: [
+      { id: 'e1', phase: 'UNDERSTAND', description: 'Memahami' },
+      { id: 'e2', phase: 'APPLY', description: 'Menerapkan' },
+      { id: 'e3', phase: 'REFLECT', description: 'Merefleksi' },
+    ],
+    assessmentPlan: { initial: [{ id: 'a1', type: 'INITIAL', description: 'Diagnostik', linkedTpIds: ['tp-101'] }], formative: [], summative: [] },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const validation = validateLearningPlan(planWithStaleObjective, { academicSetting: mockSetting, tp: mockTpData });
+  assert.strictEqual(validation.valid, true);
+  assert.strictEqual(validation.resolvedTPs[0].statement, mockTpData.items[0].statement);
+});
+
+runTest('Recovery A.2 Test 3-4: canonical experiences require learningExperiences and all three phases', () => {
+  const missingReflect: LearningPlan = {
+    id: 'lp-missing-phase',
+    academicSettingId: 'setting-1',
+    curriculumType: 'KURIKULUM_MERDEKA',
+    sourceType: 'AI_DRAFT',
+    status: 'DRAFT',
+    tpIds: ['tp-101'],
+    atpItemIds: [],
+    title: 'Missing phase',
+    topic: 'Teks',
+    objectives: [{ id: 'tp-101', tpId: 'tp-101', statement: 'Statement' }],
+    learningExperiences: [
+      { id: 'e1', phase: 'UNDERSTAND', description: 'Memahami' },
+      { id: 'e2', phase: 'APPLY', description: 'Menerapkan' },
+    ],
+    assessmentPlan: { initial: [{ id: 'a1', type: 'INITIAL', description: 'Diagnostik', linkedTpIds: ['tp-101'] }], formative: [], summative: [] },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const validation = validateLearningPlan(missingReflect, { academicSetting: mockSetting, tp: mockTpData });
+  assert.strictEqual(validation.valid, false);
+  assert.ok(validation.errors.some((e) => e.includes('REFLECT')));
+});
+
+runTest('Recovery A.2 Test 5: AI assessment pedagogical content is locally canonicalized', () => {
+  const normalized = normalizeAIAssessmentPlan({
+    initial: [{ id: 'ai-id', type: 'SUMMATIVE', description: 'Cek awal', linkedTpIds: ['wrong'] }],
+    formative: [{ technique: 'Observasi' }],
+    summative: [{ instrument: 'Rubrik proyek' }],
+  }, ['tp-101']);
+
+  assert.strictEqual(normalized.initial[0].type, 'INITIAL');
+  assert.deepStrictEqual(normalized.initial[0].linkedTpIds, ['tp-101']);
+  assert.notStrictEqual(normalized.initial[0].id, 'ai-id');
+  assert.strictEqual(normalized.formative[0].type, 'FORMATIVE');
+  assert.strictEqual(normalized.summative[0].type, 'SUMMATIVE');
+});
+
+runTest('Recovery A.2 Test 6: AI allocatedJP and AI IDs are ignored by local draft factory', () => {
+  const plan = createAIDraftLearningPlan({
+    academicSetting: mockSetting,
+    curriculumType: 'KURIKULUM_MERDEKA',
+    tpIds: ['tp-101'],
+    aiDraft: {
+      allocatedJP: 99,
+      learningExperiences: [
+        { id: 'provider-id-1', phase: 'UNDERSTAND', description: 'Memahami' },
+        { id: 'provider-id-2', phase: 'APPLY', description: 'Menerapkan' },
+        { id: 'provider-id-3', phase: 'REFLECT', description: 'Merefleksi' },
+      ],
+      assessmentPlan: { initial: [{ description: 'Diagnostik' }], formative: [], summative: [] },
+    } as any,
+    context: { tp: mockTpData },
+  });
+  assert.strictEqual(plan.allocatedJP, undefined);
+  assert.ok(plan.learningExperiences.every((exp) => exp.id.startsWith('exp-ai-')));
+  assert.strictEqual(plan.learningExperiences.some((exp) => exp.id.startsWith('provider-id')), false);
+});
+
+runTest('Recovery A.2 Test 7-9: JP resolves from exact TimeAllocation while excluding unrelated allocations', () => {
+  const plan: LearningPlan = {
+    id: 'lp-time-allocation',
+    academicSettingId: 'setting-1',
+    curriculumType: 'KURIKULUM_MERDEKA',
+    sourceType: 'MANUAL',
+    status: 'DRAFT',
+    tpIds: ['tp-102'],
+    atpItemIds: [],
+    title: 'Plan JP',
+    topic: 'Teks',
+    objectives: [],
+    learningExperiences: [],
+    assessmentPlan: { initial: [], formative: [], summative: [] },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const res = resolveLearningPlanAllocatedJP(plan, {
+    timeAllocations: [
+      { id: 'ta-related', academicSettingId: 'setting-1', tpId: 'tp-102', allocatedJP: 6, sourceType: 'TP', sourceId: 'tp-102' } as any,
+      { id: 'ta-other-setting', academicSettingId: 'setting-2', tpId: 'tp-102', allocatedJP: 40, sourceType: 'TP', sourceId: 'tp-102' } as any,
+      { id: 'ta-unrelated', academicSettingId: 'setting-1', tpId: 'tp-999', allocatedJP: 50, sourceType: 'TP', sourceId: 'tp-999' } as any,
+    ],
+  });
+  assert.strictEqual(res.allocatedJP, 6);
+  assert.deepStrictEqual(res.timeAllocationIds, ['ta-related']);
+});
+
+runTest('Recovery A.2 Test 10-12: edit preservation, preview/export source guard, and reflection mapping', () => {
+  const reflection = normalizeAIReflection({ teacherReflection: 'Catatan guru', studentReflection: 'Catatan siswa', teacher: 'legacy' });
+  assert.deepStrictEqual(reflection, { teacherReflection: 'Catatan guru', studentReflection: 'Catatan siswa' });
+
+  const source = fs.readFileSync('src/components/administration/LearningPlanManager.tsx', 'utf-8');
+  assert.ok(source.includes('(activePlan.learningExperiences || []).length > 0'));
+  assert.ok(source.indexOf('LEARNING_EXPERIENCE_PHASE_LABELS') < source.indexOf('Pendahuluan:'));
+  assert.ok(source.includes('durationMinutes'));
+});
+
+runTest('Recovery A.2 Test 13: substantive edit requires reconfirmation lifecycle', () => {
+  const ready: LearningPlan = {
+    id: 'lp-ready',
+    academicSettingId: 'setting-1',
+    curriculumType: 'KURIKULUM_MERDEKA',
+    sourceType: 'MANUAL',
+    status: 'SIAP',
+    confirmedAt: '2026-01-01T00:00:00.000Z',
+    tpIds: ['tp-101'],
+    atpItemIds: [],
+    title: 'Plan',
+    topic: 'Teks',
+    objectives: [{ id: 'tp-101', tpId: 'tp-101', statement: 'Statement' }],
+    learningExperiences: [
+      { id: 'e1', phase: 'UNDERSTAND', description: 'Memahami' },
+      { id: 'e2', phase: 'APPLY', description: 'Menerapkan' },
+      { id: 'e3', phase: 'REFLECT', description: 'Merefleksi' },
+    ],
+    assessmentPlan: { initial: [{ id: 'a1', type: 'INITIAL', description: 'Diagnostik', linkedTpIds: ['tp-101'] }], formative: [], summative: [] },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  assert.strictEqual(isSubstantiveLearningPlanChange(ready, { ...ready, topic: 'Teks Baru' }), true);
+});
+
+runTest('Recovery A.2 Test 16: partial ATP scope keeps ATP-linked TP and unlinked TP', () => {
+  const scopes = resolveAvailableScopes(mockTpData, mockAtpData);
+  assert.ok(scopes.some((s) => s.type === 'ATP_STEP' && s.linkedTpIds.includes('tp-101')));
+  assert.ok(scopes.some((s) => s.type === 'SINGLE_TP' && s.linkedTpIds.includes('tp-102')));
+});
+
+runTest('Recovery A.2 Test 17-18: unknown curriculum does not become Merdeka and K13 AI is fail-closed in UI source', () => {
+  assert.strictEqual(getCurriculumTypeFromSetting({ ...mockSetting, curriculum: 'Kurikulum Eksperimental', curriculumType: undefined }), undefined);
+  const source = fs.readFileSync('src/components/administration/LearningPlanManager.tsx', 'utf-8');
+  assert.ok(source.includes("curriculumType === 'K13'"));
+  assert.ok(source.includes('Draf AI Modul Ajar/RPP K13 belum didukung'));
+  assert.ok(source.includes("curriculumType !== 'KURIKULUM_MERDEKA'"));
+});
+
+runTest('Recovery A.2: deep learning principles normalize Indonesian names and reject unknowns', () => {
+  const normalized = normalizeDeepLearningContext({ principles: ['BERKESADARAN', 'BERMAKNA', 'MENGGEMBIRAKAN', 'UNKNOWN'] });
+  assert.deepStrictEqual(normalized?.principles, ['MINDFUL', 'MEANINGFUL', 'JOYFUL']);
+});
+
 // 3. createAIDraftLearningPlan normalizes AI experiences and preserves true JP
 runTest('createAIDraftLearningPlan: normalizes Indonesian phases and does not fabricate 2 JP', () => {
   const aiDraftRaw = {
@@ -203,6 +389,8 @@ runTest('Missing Calendar/TimeAllocation: does NOT block DRAFT plan validation',
     aiDraft: {
       learningExperiences: [
         { id: 'e1', phase: 'UNDERSTAND', description: 'Memahami' },
+        { id: 'e2', phase: 'APPLY', description: 'Menerapkan' },
+        { id: 'e3', phase: 'REFLECT', description: 'Merefleksi' },
       ],
       assessmentPlan: {
         initial: [{ id: 'a1', type: 'INITIAL', description: 'Pre-test', linkedTpIds: ['tp-101'] }],
@@ -240,7 +428,11 @@ runTest('Lifecycle: SIAP requires confirmation and blocks on draft integrity err
     title: 'Draf Modul',
     topic: 'Teks Deskripsi',
     objectives: [{ id: 'tp-101', tpId: 'tp-101', statement: 'Gagasan utama' }],
-    learningExperiences: [{ id: 'e1', phase: 'UNDERSTAND', description: 'Memahami' }],
+    learningExperiences: [
+      { id: 'e1', phase: 'UNDERSTAND', description: 'Memahami' },
+      { id: 'e2', phase: 'APPLY', description: 'Menerapkan' },
+      { id: 'e3', phase: 'REFLECT', description: 'Merefleksi' },
+    ],
     assessmentPlan: {
       initial: [{ id: 'a1', type: 'INITIAL', description: 'Pre-test', linkedTpIds: ['tp-101'] }],
       formative: [],

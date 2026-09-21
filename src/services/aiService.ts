@@ -1,5 +1,10 @@
 import { CPElem, TPItem, ATPItem, AcademicSetting, LearningPlan } from '../types';
-import { normalizeLearningExperiencePhase } from './learningPlanService';
+import {
+  normalizeLearningExperiencePhase,
+  normalizeAIAssessmentPlan,
+  normalizeAIReflection,
+  normalizeDeepLearningContext,
+} from './learningPlanService';
 
 export interface CPAnalysisResult {
   summary: string;
@@ -155,6 +160,7 @@ export async function generateLearningPlanWithAI(params: GenerateLearningPlanPar
       throw new Error('Hasil respon AI Modul Ajar tidak memuat Pengalaman Belajar (learningExperiences).');
     }
 
+    const phaseSet = new Set<string>();
     for (let i = 0; i < data.data.learningExperiences.length; i++) {
       const exp = data.data.learningExperiences[i];
       if (!exp || typeof exp !== 'object') {
@@ -165,13 +171,29 @@ export async function generateLearningPlanWithAI(params: GenerateLearningPlanPar
         throw new Error(`Fase pengalaman belajar ke-${i + 1} ('${exp.phase}') tidak sah. Pilihan sah: UNDERSTAND, APPLY, REFLECT`);
       }
       exp.phase = normPhase;
+      phaseSet.add(normPhase);
       if (!exp.description || typeof exp.description !== 'string' || exp.description.trim() === '') {
         throw new Error(`Deskripsi pengalaman belajar ke-${i + 1} kosong.`);
       }
-      if (!exp.id || typeof exp.id !== 'string' || exp.id.trim() === '') {
-        exp.id = `exp-ai-${i + 1}`;
+      exp.id = `exp-ai-${i + 1}`;
+    }
+    for (const phase of ['UNDERSTAND', 'APPLY', 'REFLECT']) {
+      if (!phaseSet.has(phase)) {
+        throw new Error(`Hasil respon AI Modul Ajar belum memuat fase ${phase}.`);
       }
     }
+    const normalizedAssessmentPlan = normalizeAIAssessmentPlan(data.data.assessmentPlan, params.tps.map((t) => t.id));
+    const assessmentCount =
+      normalizedAssessmentPlan.initial.length +
+      normalizedAssessmentPlan.formative.length +
+      normalizedAssessmentPlan.summative.length;
+    if (assessmentCount === 0) {
+      throw new Error('Hasil respon AI Modul Ajar tidak memuat Rencana Asesmen valid.');
+    }
+    data.data.assessmentPlan = normalizedAssessmentPlan;
+    data.data.reflection = normalizeAIReflection(data.data.reflection);
+    data.data.deepLearningContext = normalizeDeepLearningContext(data.data.deepLearningContext);
+    delete data.data.allocatedJP;
 
     return data.data;
   } catch (err) {

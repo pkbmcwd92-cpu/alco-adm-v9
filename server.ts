@@ -576,6 +576,7 @@ function validateAILearningPlanPayload(data: any): { isValid: boolean; reason?: 
     return { isValid: false, reason: 'Daftar Pengalaman Belajar (learningExperiences) kosong atau bukan array' };
   }
 
+  const phaseSet = new Set<string>();
   for (let i = 0; i < data.learningExperiences.length; i++) {
     const exp = data.learningExperiences[i];
     if (!exp || typeof exp !== 'object') {
@@ -586,15 +587,36 @@ function validateAILearningPlanPayload(data: any): { isValid: boolean; reason?: 
       return { isValid: false, reason: `Fase pengalaman belajar ke-${i + 1} ('${exp.phase}') tidak valid. Pilihan sah: UNDERSTAND, APPLY, REFLECT` };
     }
     exp.phase = normalizedPhase;
+    phaseSet.add(normalizedPhase);
 
     if (!exp.description || typeof exp.description !== 'string' || exp.description.trim() === '') {
       return { isValid: false, reason: `Deskripsi pengalaman belajar ke-${i + 1} kosong` };
     }
 
-    // Normalization of missing ID: generate deterministic local ID so valid AI content is not rejected
-    if (!exp.id || typeof exp.id !== 'string' || exp.id.trim() === '') {
-      exp.id = `exp-ai-${i + 1}`;
+    exp.id = `exp-ai-${i + 1}`;
+  }
+
+  for (const phase of ['UNDERSTAND', 'APPLY', 'REFLECT']) {
+    if (!phaseSet.has(phase)) {
+      return { isValid: false, reason: `Pengalaman Belajar wajib memuat fase ${phase}` };
     }
+  }
+
+  if (!data.assessmentPlan || typeof data.assessmentPlan !== 'object' || Array.isArray(data.assessmentPlan)) {
+    return { isValid: false, reason: 'Rencana Asesmen (assessmentPlan) wajib berupa objek' };
+  }
+
+  const assessmentCount = ['initial', 'formative', 'summative'].reduce((sum, key) => {
+    const items = Array.isArray(data.assessmentPlan[key]) ? data.assessmentPlan[key] : [];
+    return sum + items.filter((item: any) => item && typeof item === 'object' && (
+      typeof item.description === 'string' ||
+      typeof item.technique === 'string' ||
+      typeof item.method === 'string' ||
+      typeof item.instrument === 'string'
+    )).length;
+  }, 0);
+  if (assessmentCount === 0) {
+    return { isValid: false, reason: 'Rencana Asesmen tidak memuat item pedagogis valid' };
   }
 
   if (data.triggerQuestions !== undefined && !Array.isArray(data.triggerQuestions)) {
@@ -611,12 +633,24 @@ function validateAILearningPlanPayload(data: any): { isValid: boolean; reason?: 
   data.triggerQuestions = Array.isArray(data.triggerQuestions) ? data.triggerQuestions : [];
   data.resources = Array.isArray(data.resources) ? data.resources : [];
   data.graduateProfileDimensions = Array.isArray(data.graduateProfileDimensions) ? data.graduateProfileDimensions : [];
+  if (data.reflection && typeof data.reflection === 'object') {
+    data.reflection = {
+      teacherReflection: typeof data.reflection.teacherReflection === 'string'
+        ? data.reflection.teacherReflection
+        : (typeof data.reflection.teacher === 'string' ? data.reflection.teacher : undefined),
+      studentReflection: typeof data.reflection.studentReflection === 'string'
+        ? data.reflection.studentReflection
+        : (typeof data.reflection.student === 'string' ? data.reflection.student : undefined),
+    };
+  }
+  delete data.allocatedJP;
 
   return { isValid: true };
 }
 
 // Endpoint: AI Generate Learning Plan (Modul Ajar DRAFT)
 app.post('/api/ai/generate-learning-plan', async (req, res) => {
+  const requestId = `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   const { academicSetting, tps, atpItems, topic } = req.body || {};
 
   if (!tps || !Array.isArray(tps) || tps.length === 0) {
@@ -672,6 +706,7 @@ Kembalikan output JSON sesuai schema.`;
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
+          required: ['learningExperiences', 'assessmentPlan'],
           properties: {
             title: { type: Type.STRING },
             topic: { type: Type.STRING },
@@ -682,7 +717,6 @@ Kembalikan output JSON sesuai schema.`;
               items: {
                 type: Type.OBJECT,
                 properties: {
-                  id: { type: Type.STRING },
                   phase: { type: Type.STRING, description: 'MUST be UNDERSTAND, APPLY, or REFLECT' },
                   description: { type: Type.STRING },
                   durationMinutes: { type: Type.NUMBER },
@@ -785,8 +819,8 @@ Kembalikan output JSON sesuai schema.`;
             reflection: {
               type: Type.OBJECT,
               properties: {
-                teacher: { type: Type.STRING },
-                student: { type: Type.STRING },
+                teacherReflection: { type: Type.STRING },
+                studentReflection: { type: Type.STRING },
               },
             },
             enrichmentPlan: { type: Type.STRING },
@@ -796,12 +830,10 @@ Kembalikan output JSON sesuai schema.`;
               items: {
                 type: Type.OBJECT,
                 properties: {
-                  id: { type: Type.STRING },
                   title: { type: Type.STRING },
                 },
               },
             },
-            allocatedJP: { type: Type.NUMBER },
           },
         },
       },
@@ -811,13 +843,13 @@ Kembalikan output JSON sesuai schema.`;
     const validation = validateAILearningPlanPayload(parsed);
 
     if (!validation.isValid) {
-      console.warn('Gemini generate learning plan output invalid:', validation.reason);
+      console.warn(`[AI Service][learning-plan][${requestId}] Gemini output invalid:`, validation.reason);
       return res.status(500).json({ error: `Respons AI tidak memenuhi kualifikasi struktur Modul Ajar: ${validation.reason}` });
     }
 
     return res.json({ success: true, data: parsed, engine: 'gemini' });
   } catch (error: any) {
-    console.error('Gemini generate learning plan failed:', error);
+    console.error(`[AI Service][learning-plan][${requestId}] Gemini generate learning plan failed:`, error?.message || error);
     return res.status(500).json({ error: `Gagal menyusun Draf AI Modul Ajar: ${error.message || 'Respons provider AI tidak dapat diproses'}` });
   }
 });

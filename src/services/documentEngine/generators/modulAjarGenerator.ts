@@ -20,6 +20,7 @@ import {
 } from '../docxStyles';
 import { LearningPlan } from '../../../types';
 import { validateLearningPlan, createEmptyLearningPlan } from '../../learningPlanService';
+import { getCurriculumTypeFromSetting } from '../../curriculumRouter';
 import { resolveCanonicalLearningPlan } from '../index';
 
 /**
@@ -39,7 +40,7 @@ export async function generateModulAjar(context: DocumentGenerationContext): Pro
   if (context.documentMode === 'blank') {
     plan = createEmptyLearningPlan({
       academicSetting,
-      curriculumType: academicSetting.curriculum?.includes('2013') || academicSetting.curriculum?.includes('K13') ? 'K13' : 'KURIKULUM_MERDEKA',
+      curriculumType: getCurriculumTypeFromSetting(academicSetting),
       tpIds: [],
       atpItemIds: [],
       context: { tp, atp },
@@ -156,13 +157,13 @@ export async function generateModulAjar(context: DocumentGenerationContext): Pro
 
   // Compile TP list strictly from canonical objectives / resolved TPs
   let tpListText = '-';
-  if (plan.objectives && plan.objectives.length > 0) {
-    tpListText = plan.objectives
-      .map((obj, idx) => `${idx + 1}. ${obj.code ? `[${obj.code}] ` : ''}${obj.statement}${obj.materialScope ? ` (Materi: ${obj.materialScope})` : ''}`)
-      .join('\n');
-  } else if (validation.resolvedTPs.length > 0) {
+  if (validation.resolvedTPs.length > 0) {
     tpListText = validation.resolvedTPs
       .map((t, idx) => `${idx + 1}. ${t.code ? `[${t.code}] ` : ''}${t.statement}${t.materialScope ? ` (Materi: ${t.materialScope})` : ''}`)
+      .join('\n');
+  } else if (plan.objectives && plan.objectives.length > 0) {
+    tpListText = plan.objectives
+      .map((obj, idx) => `${idx + 1}. ${obj.code ? `[${obj.code}] ` : ''}${obj.statement}${obj.materialScope ? ` (Materi: ${obj.materialScope})` : ''}`)
       .join('\n');
   }
 

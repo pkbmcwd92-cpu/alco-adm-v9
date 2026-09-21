@@ -33,7 +33,12 @@ import {
 } from '../types';
 import { getCurriculumTypeFromSetting } from './curriculumRouter';
 import { validateATPReferences, normalizeATPReferences, validateATPDataWorkflow } from './cpWorkflowService';
-import { migrateLegacyLearningPlan, invalidatePlanIfDependenciesChanged } from './learningPlanService';
+import {
+  migrateLegacyLearningPlan,
+  invalidatePlanIfDependenciesChanged,
+  resolveLearningPlanObjectives,
+  resolveLearningPlanAllocatedJP,
+} from './learningPlanService';
 import { invalidateAssessmentPlanDependencies } from './assessmentPlanService';
 import { invalidateAssessmentPackageDependencies } from './assessmentPackageService';
 import {
@@ -1499,6 +1504,18 @@ export function saveTP(tp: TPData): void {
     });
   }
 
+  current.learningPlans = (current.learningPlans || []).map((plan) => {
+    if (plan.academicSettingId !== tp.academicSettingId || plan.status !== 'SIAP') return plan;
+    const referenced = (plan.tpIds || []).some((id) => (tp.items || []).some((item) => item.id === id));
+    if (!referenced) return plan;
+    return {
+      ...plan,
+      status: 'PERLU_DILENGKAPI',
+      confirmedAt: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+
   saveAppStorage(current);
 }
 
@@ -1538,6 +1555,22 @@ export function saveATP(atp: ATPData): void {
   } else {
     current.atps.push(updatedATP);
   }
+
+  const affectedAtpItemIds = new Set((updatedATP.items || []).map((item) => item.id));
+  const affectedTpIds = new Set((updatedATP.items || []).map((item) => item.tpId).filter(Boolean) as string[]);
+  current.learningPlans = (current.learningPlans || []).map((plan) => {
+    if (plan.academicSettingId !== atp.academicSettingId || plan.status !== 'SIAP') return plan;
+    const referencesAtp = (plan.atpItemIds || []).some((id) => affectedAtpItemIds.has(id));
+    const referencesTp = (plan.tpIds || []).some((id) => affectedTpIds.has(id));
+    if (!referencesAtp && !referencesTp) return plan;
+    return {
+      ...plan,
+      status: 'PERLU_DILENGKAPI',
+      confirmedAt: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+
   saveAppStorage(current);
 }
 
@@ -1858,8 +1891,23 @@ export function saveLearningPlan(plan: LearningPlan): void {
   const state = loadAppStorage();
   if (!state.learningPlans) state.learningPlans = [];
   const idx = state.learningPlans.findIndex((p) => p.id === plan.id);
+  const tp = state.tps.find((t) => t.academicSettingId === plan.academicSettingId);
+  const atp = state.atps.find((a) => a.academicSettingId === plan.academicSettingId);
+  const k13Analysis = (state.k13Analyses || []).find((k) => k.academicSettingId === plan.academicSettingId);
+  const objectives = resolveLearningPlanObjectives({
+    tpIds: plan.tpIds,
+    tp,
+    k13Analysis,
+    curriculumType: plan.curriculumType,
+  }).objectives;
+  const jpResolution = resolveLearningPlanAllocatedJP(plan, {
+    atp,
+    timeAllocations: state.timeAllocations || [],
+  });
   const updatedPlan: LearningPlan = {
     ...plan,
+    objectives,
+    timeAllocationIds: jpResolution.timeAllocationIds || plan.timeAllocationIds,
     updatedAt: new Date().toISOString(),
   };
   if (idx >= 0) {

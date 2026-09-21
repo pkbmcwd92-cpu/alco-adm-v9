@@ -15,6 +15,8 @@ import {
   LearningExperiencePhase,
   DeepLearningPrinciple,
   DeepLearningContext,
+  LearningObjectiveReference,
+  AssessmentPlanItem,
 } from '../types';
 
 export const LEARNING_EXPERIENCE_PHASE_LABELS: Record<LearningExperiencePhase, string> = {
@@ -47,9 +49,68 @@ export function normalizeLearningExperiencePhase(raw: unknown): LearningExperien
   return null;
 }
 
+export function normalizeDeepLearningPrinciple(raw: unknown): DeepLearningPrinciple | null {
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim().toUpperCase();
+  if (s === 'MINDFUL' || s === 'BERKESADARAN') return 'MINDFUL';
+  if (s === 'MEANINGFUL' || s === 'BERMAKNA') return 'MEANINGFUL';
+  if (s === 'JOYFUL' || s === 'MENGGEMBIRAKAN') return 'JOYFUL';
+  return null;
+}
+
+export interface LearningPlanObjectiveResolution {
+  objectives: LearningObjectiveReference[];
+  danglingIds: string[];
+}
+
+export function resolveLearningPlanObjectives(params: {
+  tpIds?: string[];
+  tp?: TPData | null;
+  k13Analysis?: K13Analysis | null;
+  curriculumType?: CurriculumType;
+}): LearningPlanObjectiveResolution {
+  const objectives: LearningObjectiveReference[] = [];
+  const danglingIds: string[] = [];
+  const orderedIds = Array.isArray(params.tpIds) ? params.tpIds.filter(Boolean) : [];
+
+  for (const id of orderedIds) {
+    const tpItem = params.tp?.items?.find((item) => item.id === id);
+    if (tpItem) {
+      objectives.push({
+        id: tpItem.id,
+        tpId: tpItem.id,
+        code: tpItem.code,
+        statement: tpItem.statement || tpItem.description || '',
+        materialScope: tpItem.contentScope,
+      });
+      continue;
+    }
+
+    if (params.curriculumType === 'K13') {
+      const k13Item = params.k13Analysis?.items?.find((item) => item.id === id);
+      if (k13Item) {
+        objectives.push({
+          id: k13Item.id,
+          tpId: k13Item.id,
+          code: k13Item.kd ? k13Item.kd.slice(0, 24) : 'KD',
+          statement: k13Item.tujuanPembelajaran || k13Item.indikator || k13Item.kd || '',
+          materialScope: k13Item.materi,
+        });
+        continue;
+      }
+    }
+
+    danglingIds.push(id);
+  }
+
+  return { objectives, danglingIds };
+}
+
 export interface LearningPlanJPResolution {
   allocatedJP?: number;
   source: 'EXPLICIT_PLAN' | 'CANONICAL_ATP' | 'LINKED_TIME_ALLOCATION' | 'UNRESOLVED';
+  timeAllocationIds?: string[];
+  issues?: string[];
 }
 
 /**
@@ -67,6 +128,7 @@ export function resolveLearningPlanAllocatedJP(
     timeAllocations?: TimeAllocation[] | null;
   }
 ): LearningPlanJPResolution {
+  const issues: string[] = [];
   // 1. Explicit LearningPlan.allocatedJP
   if (typeof plan.allocatedJP === 'number' && !isNaN(plan.allocatedJP) && plan.allocatedJP > 0) {
     return { allocatedJP: plan.allocatedJP, source: 'EXPLICIT_PLAN' };
@@ -87,9 +149,29 @@ export function resolveLearningPlanAllocatedJP(
     }
   }
 
-  // 3. Linked TimeAllocation actual value
-  if (context.timeAllocations && context.timeAllocations.length > 0 && plan.timeAllocationIds && plan.timeAllocationIds.length > 0) {
-    const matchedAllocs = context.timeAllocations.filter((ta) => plan.timeAllocationIds?.includes(ta.id));
+  // 3. Linked TimeAllocation actual value, by explicit allocation IDs or exact canonical relationships
+  if (context.timeAllocations && context.timeAllocations.length > 0) {
+    const scopedAllocations = context.timeAllocations.filter((ta) => !ta.academicSettingId || ta.academicSettingId === plan.academicSettingId);
+    const relatedById = plan.timeAllocationIds && plan.timeAllocationIds.length > 0
+      ? scopedAllocations.filter((ta) => plan.timeAllocationIds?.includes(ta.id))
+      : [];
+    const relatedByAtp = (plan.atpItemIds || []).length > 0
+      ? scopedAllocations.filter((ta) => {
+          const sourceId = ta.sourceId || '';
+          const atpItemId = ta.atpItemId || '';
+          return (plan.atpItemIds || []).includes(atpItemId) || (plan.atpItemIds || []).includes(sourceId);
+        })
+      : [];
+    const relatedByTp = (plan.tpIds || []).length > 0
+      ? scopedAllocations.filter((ta) => ta.tpId && (plan.tpIds || []).includes(ta.tpId))
+      : [];
+
+    const matchedMap = new Map<string, TimeAllocation>();
+    [...relatedById, ...relatedByAtp, ...relatedByTp].forEach((ta) => {
+      if (ta.id) matchedMap.set(ta.id, ta);
+    });
+    const matchedAllocs = Array.from(matchedMap.values());
+
     const totalAllocJP = matchedAllocs.reduce((sum, a) => {
       const val = typeof a.allocatedJP === 'number' && a.allocatedJP > 0
         ? a.allocatedJP
@@ -98,12 +180,82 @@ export function resolveLearningPlanAllocatedJP(
     }, 0);
 
     if (totalAllocJP > 0) {
-      return { allocatedJP: totalAllocJP, source: 'LINKED_TIME_ALLOCATION' };
+      return {
+        allocatedJP: totalAllocJP,
+        source: 'LINKED_TIME_ALLOCATION',
+        timeAllocationIds: matchedAllocs.map((a) => a.id),
+        issues,
+      };
     }
   }
 
   // 4. UNRESOLVED (Never guess, never fallback to synthetic numbers)
-  return { allocatedJP: undefined, source: 'UNRESOLVED' };
+  return { allocatedJP: undefined, source: 'UNRESOLVED', issues };
+}
+
+export function normalizeAIReflection(raw: any): LearningPlan['reflection'] | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const teacherReflection = typeof raw.teacherReflection === 'string'
+    ? raw.teacherReflection
+    : (typeof raw.teacher === 'string' ? raw.teacher : undefined);
+  const studentReflection = typeof raw.studentReflection === 'string'
+    ? raw.studentReflection
+    : (typeof raw.student === 'string' ? raw.student : undefined);
+  if (!teacherReflection && !studentReflection) return undefined;
+  return { teacherReflection, studentReflection };
+}
+
+export function normalizeDeepLearningContext(raw: any): DeepLearningContext | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const principles = Array.isArray(raw.principles)
+    ? raw.principles
+        .map((p: unknown) => normalizeDeepLearningPrinciple(p))
+        .filter((p: DeepLearningPrinciple | null): p is DeepLearningPrinciple => p !== null)
+    : undefined;
+  const graduateProfileDimensions = Array.isArray(raw.graduateProfileDimensions)
+    ? raw.graduateProfileDimensions.filter((d: unknown): d is string => typeof d === 'string' && d.trim().length > 0)
+    : undefined;
+
+  if ((!principles || principles.length === 0) && (!graduateProfileDimensions || graduateProfileDimensions.length === 0)) {
+    return undefined;
+  }
+
+  return {
+    principles: principles && principles.length > 0 ? Array.from(new Set(principles)) : undefined,
+    graduateProfileDimensions,
+  };
+}
+
+function normalizeAIAssessmentItems(rawItems: any, type: AssessmentPlanItem['type'], tpIds: string[]): AssessmentPlanItem[] {
+  if (!Array.isArray(rawItems)) return [];
+  return rawItems
+    .filter((item) => item && typeof item === 'object')
+    .map((item, idx) => {
+      const description = typeof item.description === 'string' ? item.description.trim() : '';
+      const technique = typeof item.technique === 'string' ? item.technique.trim() : undefined;
+      const method = typeof item.method === 'string' ? item.method.trim() : undefined;
+      const instrument = typeof item.instrument === 'string' ? item.instrument.trim() : undefined;
+      if (!description && !technique && !method && !instrument) return null;
+      return {
+        id: `asm-${type.toLowerCase()}-${idx + 1}-${Date.now().toString(36)}`,
+        type,
+        linkedTpIds: [...tpIds],
+        method,
+        technique,
+        instrument,
+        description: description || technique || method || instrument,
+      } satisfies AssessmentPlanItem;
+    })
+    .filter((item): item is AssessmentPlanItem => item !== null);
+}
+
+export function normalizeAIAssessmentPlan(raw: any, tpIds: string[]): LearningPlan['assessmentPlan'] {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  return {
+    initial: normalizeAIAssessmentItems(source.initial, 'INITIAL', tpIds),
+    formative: normalizeAIAssessmentItems(source.formative, 'FORMATIVE', tpIds),
+    summative: normalizeAIAssessmentItems(source.summative, 'SUMMATIVE', tpIds),
+  };
 }
 
 export interface LearningPlanValidationResult {
@@ -169,51 +321,28 @@ export function validateLearningPlan(
     errors.push(`ID Pengaturan Akademik tidak sesuai (Plan: ${plan.academicSettingId}, Context: ${context.academicSetting.id}).`);
   }
 
+  const objectiveResolution = resolveLearningPlanObjectives({
+    tpIds: plan.tpIds,
+    tp: context.tp,
+    k13Analysis: context.k13Analysis,
+    curriculumType: plan.curriculumType,
+  });
+
   // 2. Validate Canonical TP Dependency (Strict ID lookup - NO text matching)
   if (!plan.tpIds || !Array.isArray(plan.tpIds) || plan.tpIds.length === 0) {
     errors.push('Perencanaan Pembelajaran wajib merujuk minimal 1 Tujuan Pembelajaran (tpIds kosong).');
   } else {
-    const isK13 = plan.curriculumType === 'K13';
-    const availableTpItems: TPItem[] = context.tp?.items || [];
-    const availableK13Items = context.k13Analysis?.items || [];
-
-    for (const tpId of plan.tpIds) {
-      if (isK13) {
-        // In K13, check k13Analysis items or tp items
-        const foundK13 = availableK13Items.find((item) => item.id === tpId);
-        const foundTp = availableTpItems.find((item) => item.id === tpId);
-        if (foundK13) {
-          resolvedTPs.push({
-            id: foundK13.id,
-            code: foundK13.kd ? foundK13.kd.slice(0, 10) : 'KD',
-            statement: foundK13.tujuanPembelajaran || foundK13.indikator || foundK13.kd || '',
-            materialScope: foundK13.materi,
-          });
-        } else if (foundTp) {
-          resolvedTPs.push({
-            id: foundTp.id,
-            code: foundTp.code,
-            statement: foundTp.statement || foundTp.description || '',
-            materialScope: foundTp.contentScope,
-          });
-        } else {
-          errors.push(`Rujukan TP/KD dengan ID '${tpId}' tidak ditemukan pada data kurikulum aktif (Orphan TP ID).`);
-        }
-      } else {
-        // Merdeka: Strict lookup in context.tp.items by item.id
-        const foundTp = availableTpItems.find((item) => item.id === tpId);
-        if (foundTp) {
-          resolvedTPs.push({
-            id: foundTp.id,
-            code: foundTp.code,
-            statement: foundTp.statement || foundTp.description || '',
-            materialScope: foundTp.contentScope,
-          });
-        } else {
-          errors.push(`Tujuan Pembelajaran dengan ID '${tpId}' tidak ditemukan dalam basis data TP (Orphan TP ID).`);
-        }
-      }
-    }
+    objectiveResolution.objectives.forEach((obj) => {
+      resolvedTPs.push({
+        id: obj.tpId || obj.id,
+        code: obj.code,
+        statement: obj.statement,
+        materialScope: obj.materialScope,
+      });
+    });
+    objectiveResolution.danglingIds.forEach((tpId) => {
+      errors.push(`Tujuan Pembelajaran/KD dengan ID '${tpId}' tidak ditemukan dalam data canonical aktif (Orphan TP ID).`);
+    });
   }
 
   // 3. Validate Canonical ATP Dependency (Strict ID lookup)
@@ -234,16 +363,15 @@ export function validateLearningPlan(
     }
   }
 
-  // 4. Validate Objectives list
-  if (!plan.objectives || !Array.isArray(plan.objectives) || plan.objectives.length === 0) {
-    errors.push('Daftar rumusan Tujuan Pembelajaran (objectives) tidak boleh kosong.');
+  // 4. Validate Objectives list from canonical TP/KD, not stale stored cache
+  if (objectiveResolution.objectives.length === 0) {
+    errors.push('Daftar rumusan Tujuan Pembelajaran canonical tidak boleh kosong.');
   } else {
-    for (let i = 0; i < plan.objectives.length; i++) {
-      const obj = plan.objectives[i];
+    objectiveResolution.objectives.forEach((obj, i) => {
       if (!obj.statement || obj.statement.trim() === '') {
-        errors.push(`Tujuan Pembelajaran butir ke-${i + 1} memiliki rumusan kalimat kosong.`);
+        errors.push(`Tujuan Pembelajaran canonical butir ke-${i + 1} memiliki rumusan kalimat kosong.`);
       }
-    }
+    });
   }
 
   // 5. Validate Learning Activity & Canonical Learning Experiences (2026 Compatible)
@@ -412,6 +540,21 @@ export function validateLearningPlan(
     warnings.push('Alokasi JP belum ditentukan.');
   }
 
+  if (experiences.length > 0) {
+    const validPhaseSet = new Set(
+      experiences
+        .filter((exp) => exp && exp.description && exp.description.trim())
+        .map((exp) => exp.phase)
+        .filter((phase) => phase === 'UNDERSTAND' || phase === 'APPLY' || phase === 'REFLECT')
+    );
+    (['UNDERSTAND', 'APPLY', 'REFLECT'] as LearningExperiencePhase[]).forEach((phase) => {
+      if (!validPhaseSet.has(phase)) {
+        errors.push(`Pengalaman Belajar canonical wajib memuat fase ${phase} (${LEARNING_EXPERIENCE_PHASE_LABELS[phase]}).`);
+      }
+    });
+  }
+  (jpResolution.issues || []).forEach((issue) => warnings.push(issue));
+
   // 10. Lifecycle & Status Validation
   if (plan.status === 'SIAP') {
     if (draftErrors.length > 0) {
@@ -452,25 +595,10 @@ export function createEmptyLearningPlan(params: {
   atpItemIds?: string[];
   context?: { tp?: TPData | null; atp?: ATPData | null };
 }): LearningPlan {
-  const { academicSetting, curriculumType = 'KURIKULUM_MERDEKA', tpIds = [], atpItemIds = [], context } = params;
+  const { academicSetting, curriculumType, tpIds = [], atpItemIds = [], context } = params;
   const now = new Date().toISOString();
 
-  // Populate initial objective references from canonical TP data if available
-  const objectives: LearningPlan['objectives'] = [];
-  if (tpIds.length > 0 && context?.tp?.items) {
-    for (const id of tpIds) {
-      const found = context.tp.items.find((item) => item.id === id);
-      if (found) {
-        objectives.push({
-          id: found.id,
-          tpId: found.id,
-          code: found.code,
-          statement: found.statement || found.description || '',
-          materialScope: found.contentScope,
-        });
-      }
-    }
-  }
+  const objectives = resolveLearningPlanObjectives({ tpIds, tp: context?.tp, curriculumType }).objectives;
 
   return {
     id: `lp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -512,25 +640,12 @@ export function createAIDraftLearningPlan(params: {
   aiDraft: Partial<LearningPlan>;
   context?: { tp?: TPData | null; atp?: ATPData | null };
 }): LearningPlan {
-  const { academicSetting, curriculumType = 'KURIKULUM_MERDEKA', tpIds, atpItemIds = [], aiDraft, context } = params;
+  const { academicSetting, curriculumType, tpIds, atpItemIds = [], aiDraft, context } = params;
   const now = new Date().toISOString();
 
-  // Populate objectives strictly from canonical TPs
-  const objectives: LearningPlan['objectives'] = [];
-  if (tpIds.length > 0 && context?.tp?.items) {
-    for (const id of tpIds) {
-      const found = context.tp.items.find((item) => item.id === id);
-      if (found) {
-        objectives.push({
-          id: found.id,
-          tpId: found.id,
-          code: found.code,
-          statement: found.statement || found.description || '',
-          materialScope: found.contentScope,
-        });
-      }
-    }
-  }
+  const objectives = resolveLearningPlanObjectives({ tpIds, tp: context?.tp, curriculumType }).objectives;
+  const normalizedAssessmentPlan = normalizeAIAssessmentPlan(aiDraft.assessmentPlan, tpIds);
+  const normalizedDeepLearningContext = normalizeDeepLearningContext(aiDraft.deepLearningContext);
 
   return {
     id: `lp-ai-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -542,14 +657,12 @@ export function createAIDraftLearningPlan(params: {
     atpItemIds,
     title: aiDraft.title || (objectives.length > 0 ? `Draf Modul Ajar: ${objectives[0].materialScope || objectives[0].code || 'Topik'}` : 'Draf Modul Ajar'),
     topic: aiDraft.topic || (objectives.length > 0 ? objectives[0].materialScope : ''),
-    objectives: objectives.length > 0 ? objectives : (aiDraft.objectives || []),
+    objectives,
     learningExperiences: Array.isArray(aiDraft.learningExperiences)
       ? aiDraft.learningExperiences.map((exp, idx) => {
           const normPhase = normalizeLearningExperiencePhase(exp.phase) || exp.phase;
           return {
-            id: exp.id && typeof exp.id === 'string' && exp.id.trim() !== ''
-              ? exp.id
-              : `exp-ai-${idx + 1}-${Date.now().toString(36)}`,
+            id: `exp-ai-${idx + 1}-${Date.now().toString(36)}`,
             phase: normPhase as LearningExperiencePhase,
             description: exp.description || '',
             durationMinutes:
@@ -563,7 +676,7 @@ export function createAIDraftLearningPlan(params: {
           };
         })
       : [],
-    deepLearningContext: aiDraft.deepLearningContext,
+    deepLearningContext: normalizedDeepLearningContext,
     graduateProfileDimensions: Array.isArray(aiDraft.graduateProfileDimensions) ? aiDraft.graduateProfileDimensions : undefined,
     learningSteps: {
       opening: aiDraft.learningSteps?.opening || [],
@@ -571,22 +684,22 @@ export function createAIDraftLearningPlan(params: {
       closing: aiDraft.learningSteps?.closing || [],
     },
     assessmentPlan: {
-      initial: aiDraft.assessmentPlan?.initial || [],
-      formative: aiDraft.assessmentPlan?.formative || [],
-      summative: aiDraft.assessmentPlan?.summative || [],
+      initial: normalizedAssessmentPlan.initial,
+      formative: normalizedAssessmentPlan.formative,
+      summative: normalizedAssessmentPlan.summative,
     },
     resources: aiDraft.resources || [],
     differentiation: aiDraft.differentiation,
     meaningfulUnderstanding: aiDraft.meaningfulUnderstanding,
     triggerQuestions: aiDraft.triggerQuestions,
-    reflection: aiDraft.reflection,
+    reflection: normalizeAIReflection(aiDraft.reflection),
     enrichmentPlan: aiDraft.enrichmentPlan,
     remedialPlan: aiDraft.remedialPlan,
     initialCompetency: aiDraft.initialCompetency,
     targetStudents: aiDraft.targetStudents,
     learningModel: aiDraft.learningModel,
     p3Dimensions: aiDraft.p3Dimensions,
-    allocatedJP: typeof aiDraft.allocatedJP === 'number' && !isNaN(aiDraft.allocatedJP) && aiDraft.allocatedJP > 0 ? aiDraft.allocatedJP : undefined,
+    allocatedJP: undefined,
     createdAt: now,
     updatedAt: now,
   };
@@ -622,6 +735,7 @@ export function confirmLearningPlan(
       plan: {
         ...plan,
         status: 'PERLU_DILENGKAPI',
+        confirmedAt: undefined,
         updatedAt: new Date().toISOString(),
       },
       validation,
@@ -684,6 +798,7 @@ export function invalidatePlanIfDependenciesChanged(
       plan: {
         ...plan,
         status: 'PERLU_DILENGKAPI',
+        confirmedAt: undefined,
         updatedAt: new Date().toISOString(),
       },
       isInvalidated: true,
@@ -700,7 +815,7 @@ export function invalidatePlanIfDependenciesChanged(
 export function migrateLegacyLearningPlan(
   legacy: any,
   academicSettingId: string,
-  curriculumType: CurriculumType = 'KURIKULUM_MERDEKA'
+  curriculumType?: CurriculumType
 ): LearningPlan {
   const now = new Date().toISOString();
   const rawId = legacy?.id || `lp-migrated-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;

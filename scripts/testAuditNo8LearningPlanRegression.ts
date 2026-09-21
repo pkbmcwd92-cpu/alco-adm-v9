@@ -2,6 +2,7 @@ import {
   createEmptyLearningPlan,
   createAIDraftLearningPlan,
   invalidatePlanIfDependenciesChanged,
+  validateLearningPlan,
 } from '../src/services/learningPlanService';
 import { generateModulAjar } from '../src/services/documentEngine/generators/modulAjarGenerator';
 import { generatePdfDocument } from '../src/services/documentEngine/renderers/pdf/pdfDocGenerators';
@@ -202,6 +203,7 @@ async function runRegressionSuite() {
   const validSiapPlan: LearningPlan = {
     ...emptyPlan,
     status: 'SIAP',
+    confirmedAt: new Date().toISOString(),
     tpIds: ['tp-101'],
     atpItemIds: ['atp-201'],
     topic: 'Pengenalan Algoritma',
@@ -213,12 +215,28 @@ async function runRegressionSuite() {
       core: [{ id: 's2', description: 'Latihan Logika' }],
       closing: [{ id: 's3', description: 'Refleksi' }],
     },
+    learningExperiences: [
+      { id: 'e1', phase: 'UNDERSTAND', description: 'Mengamati contoh algoritma sederhana', durationMinutes: 20 },
+      { id: 'e2', phase: 'APPLY', description: 'Menyusun langkah algoritma', durationMinutes: 50 },
+      { id: 'e3', phase: 'REFLECT', description: 'Merefleksi hasil latihan', durationMinutes: 20 },
+    ],
     assessmentPlan: {
       initial: [{ id: 'a1', type: 'INITIAL', description: 'Pre-test', linkedTpIds: ['tp-101'] }],
       formative: [{ id: 'a2', type: 'FORMATIVE', description: 'Kuis', linkedTpIds: ['tp-101'] }],
       summative: [{ id: 'a3', type: 'SUMMATIVE', description: 'Tes Akhir', linkedTpIds: ['tp-101'] }],
     },
   };
+
+  const beforeDeletionValidation = validateLearningPlan(validSiapPlan, {
+    academicSetting: mockSetting,
+    tp: mockTpData,
+    atp: mockAtpData,
+  });
+  assert(
+    beforeDeletionValidation.valid === true,
+    'Dependency invalidation fixture must be valid before dependency deletion',
+    beforeDeletionValidation.errors.join(' | ')
+  );
 
   // Now simulate deleted TP (remove tp-101 from context)
   const modifiedTpData: TPData = {

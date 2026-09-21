@@ -726,7 +726,7 @@ export interface DeepLearningContext {
 export interface LearningPlan {
   id: string;
   academicSettingId: string;
-  curriculumType: CurriculumType;
+  curriculumType?: CurriculumType;
   sourceType: LearningPlanSource;
   status: LearningPlanStatus;
 
