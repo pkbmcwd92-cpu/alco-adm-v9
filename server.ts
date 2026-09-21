@@ -6,7 +6,6 @@ import dotenv from 'dotenv';
 import { OfficialEducationDataProvider } from './server/schoolProvider';
 import {
   fallbackAnalyzeCP,
-  fallbackGenerateATP,
   fallbackRefineText,
 } from './server/curriculumFallback';
 
@@ -333,7 +332,7 @@ Kembalikan respon dalam format JSON sesuai schema:`;
 
 // 3. Endpoint: AI Generate ATP from TP
 app.post('/api/ai/generate-atp', async (req, res) => {
-  const { tps, cpGeneral, subject, grade, phase, semester, academicYear, curriculum, totalHoursPerWeek = 5 } = req.body || {};
+  const { tps, cpGeneral, subject, grade, phase, semester, academicYear, curriculum, totalHoursPerWeek } = req.body || {};
 
   // 1. Validate TP array prerequisite
   if (!tps || !Array.isArray(tps) || tps.length === 0) {
@@ -364,7 +363,31 @@ app.post('/api/ai/generate-atp', async (req, res) => {
     return res.status(400).json({ error: 'Semester harus diisi sebelum menyusun ATP.' });
   }
 
-  // 3. Check AI configuration (GEMINI_API_KEY)
+  // 3. Validate totalHoursPerWeek if provided (No silent default, no fake JP assumption)
+  let validatedWeeklyJP: number | undefined = undefined;
+  if (totalHoursPerWeek !== undefined && totalHoursPerWeek !== null) {
+    const isNumType = typeof totalHoursPerWeek === 'number';
+    const isStringType = typeof totalHoursPerWeek === 'string';
+    const parsed = isNumType
+      ? totalHoursPerWeek
+      : isStringType && totalHoursPerWeek.trim() !== ''
+        ? Number(totalHoursPerWeek)
+        : NaN;
+
+    if (
+      !Number.isFinite(parsed) ||
+      isNaN(parsed) ||
+      parsed <= 0 ||
+      !Number.isInteger(parsed)
+    ) {
+      return res.status(400).json({
+        error: 'Alokasi jam per minggu (totalHoursPerWeek) jika diisi harus berupa bilangan bulat positif yang valid (misal: 1, 2, 4, 5).',
+      });
+    }
+    validatedWeeklyJP = parsed;
+  }
+
+  // 4. Check AI configuration (GEMINI_API_KEY)
   if (!process.env.GEMINI_API_KEY) {
     return res.status(503).json({ error: 'Layanan AI belum dikonfigurasi (GEMINI_API_KEY tidak terpasang).' });
   }
@@ -377,7 +400,7 @@ DATA PEMBELAJARAN:
 - Mata Pelajaran: ${subject || '-'}
 - Kelas / Fase: ${grade || '-'} / ${phase || '-'}
 - Tahun Ajaran / Semester: ${academicYear || '-'} / ${semester || '-'}
-- Alokasi Jam per Minggu: ${totalHoursPerWeek} JP
+- Alokasi Jam per Minggu: ${validatedWeeklyJP !== undefined ? `${validatedWeeklyJP} JP` : 'Belum ditentukan'}
 - Rujukan CP: ${cpGeneral || '-'}
 
 DAFTAR TP YANG SUDAH DIBUAT:
@@ -392,7 +415,11 @@ ${tps
 
 INSTRUKSI PENYUSUNAN ATP:
 1. Urutkan TP secara logis (misal dari konkret ke abstrak, mudah ke sukar, atau hierarki keterampilan bahasa/sains/matematika).
-2. Tentukan Alokasi Waktu (JP) yang realistis untuk tiap langkah pembelajaran.
+${
+  validatedWeeklyJP !== undefined
+    ? `2. Tentukan Alokasi Waktu (JP) yang realistis dan proporsional untuk tiap langkah pembelajaran (total mingguan: ${validatedWeeklyJP} JP).`
+    : `2. Alokasi Waktu (JP) per minggu BELUM DITENTUKAN. JANGAN mengarang alokasi JP atau menyimpulkan angka JP sendiri. Kosongkan alokasi JP untuk tiap langkah pembelajaran.`
+}
 3. Rincikan Rencana Asesmen (Asesmen Awal, Formatif, dan Sumatif Lingkup Materi).
 4. Rincikan Glosarium / Kata Kunci penting.
 5. Gunakan terminologi "Murid" (bukan peserta didik) dan "Dimensi Profil Lulusan".
@@ -420,7 +447,12 @@ Kembalikan output JSON sesuai schema:`;
                   tpCode: { type: Type.STRING, description: 'Kode TP yang diurutkan' },
                   tpStatement: { type: Type.STRING, description: 'Rumusan TP' },
                   materialScope: { type: Type.STRING, description: 'Lingkup Materi / Topik Pembelajaran Spesifik' },
-                  jp: { type: Type.INTEGER, description: 'Jumlah Alokasi Jam Pelajaran (JP), misal 4, 6, 8' },
+                  jp: {
+                    type: Type.INTEGER,
+                    description: validatedWeeklyJP !== undefined
+                      ? 'Jumlah Alokasi Jam Pelajaran (JP), misal 4, 6, 8'
+                      : 'Jangan diisi jika alokasi JP per minggu belum ditentukan',
+                  },
                   p3Dimensions: { type: Type.ARRAY, items: { type: Type.STRING } },
                   assessmentPlan: { type: Type.STRING, description: 'Bentuk Asesmen Awal, Formatif, dan Sumatif' },
                   glossary: { type: Type.STRING, description: 'Kata kunci / Glosarium istilah penting' },
@@ -431,7 +463,7 @@ Kembalikan output JSON sesuai schema:`;
                   'tpCode',
                   'tpStatement',
                   'materialScope',
-                  'jp',
+                  ...(validatedWeeklyJP !== undefined ? ['jp'] : []),
                   'p3Dimensions',
                   'assessmentPlan',
                   'glossary',
@@ -461,6 +493,20 @@ Kembalikan output JSON sesuai schema:`;
       const stmt = item.tpStatement || item.statement;
       if (!stmt || typeof stmt !== 'string' || stmt.trim() === '') {
         return res.status(500).json({ error: `Respons AI tidak memenuhi kualifikasi struktur ATP: Rumusan TP pada butir langkah ke-${i + 1} kosong atau tidak valid` });
+      }
+
+      if (validatedWeeklyJP === undefined) {
+        // Enforce unresolved JP: do not leak synthetic or guessed numbers
+        delete item.jp;
+        delete item.allocatedJP;
+      } else {
+        // If JP was provided by caller, retain positive finite JP from AI
+        if (typeof item.jp === 'number' && Number.isFinite(item.jp) && item.jp > 0) {
+          item.allocatedJP = item.jp;
+        } else {
+          delete item.jp;
+          delete item.allocatedJP;
+        }
       }
     }
 

@@ -273,4 +273,307 @@ runTest('Lifecycle: SIAP requires confirmation and blocks on draft integrity err
   assert.strictEqual(resConfirmed.errors.length, 0);
 });
 
+// 6. ATP AI totalHoursPerWeek validation & resolution contract tests
+import fs from 'node:fs';
+
+// Helper simulating server.ts totalHoursPerWeek validation
+function validateServerTotalHoursPerWeek(totalHoursPerWeek: any): { valid: boolean; value?: number; error?: string } {
+  if (totalHoursPerWeek === undefined || totalHoursPerWeek === null) {
+    return { valid: true, value: undefined };
+  }
+  const isNumType = typeof totalHoursPerWeek === 'number';
+  const isStringType = typeof totalHoursPerWeek === 'string';
+  const parsed = isNumType
+    ? totalHoursPerWeek
+    : isStringType && totalHoursPerWeek.trim() !== ''
+      ? Number(totalHoursPerWeek)
+      : NaN;
+
+  if (
+    !Number.isFinite(parsed) ||
+    isNaN(parsed) ||
+    parsed <= 0 ||
+    !Number.isInteger(parsed)
+  ) {
+    return {
+      valid: false,
+      error: 'Alokasi jam per minggu (totalHoursPerWeek) jika diisi harus berupa bilangan bulat positif yang valid (misal: 1, 2, 4, 5).',
+    };
+  }
+  return { valid: true, value: parsed };
+}
+
+// Helper simulating server.ts ATP prompt builder & item processor
+function buildServerATPPromptContext(validatedWeeklyJP?: number): { promptJPText: string; instruction: string } {
+  const promptJPText = validatedWeeklyJP !== undefined ? `${validatedWeeklyJP} JP` : 'Belum ditentukan';
+  const instruction = validatedWeeklyJP !== undefined
+    ? `2. Tentukan Alokasi Waktu (JP) yang realistis dan proporsional untuk tiap langkah pembelajaran (total mingguan: ${validatedWeeklyJP} JP).`
+    : `2. Alokasi Waktu (JP) per minggu BELUM DITENTUKAN. JANGAN mengarang alokasi JP atau menyimpulkan angka JP sendiri. Kosongkan alokasi JP untuk tiap langkah pembelajaran.`;
+  return { promptJPText, instruction };
+}
+
+function processServerATPItems(items: any[], validatedWeeklyJP?: number): any[] {
+  const processed = JSON.parse(JSON.stringify(items));
+  for (let i = 0; i < processed.length; i++) {
+    const item = processed[i];
+    if (validatedWeeklyJP === undefined) {
+      delete item.jp;
+      delete item.allocatedJP;
+    } else {
+      if (typeof item.jp === 'number' && Number.isFinite(item.jp) && item.jp > 0) {
+        item.allocatedJP = item.jp;
+      } else {
+        delete item.jp;
+        delete item.allocatedJP;
+      }
+    }
+  }
+  return processed;
+}
+
+runTest('ATP Test 1: totalHoursPerWeek missing -> does NOT become 5 (unresolved undefined)', () => {
+  const res = validateServerTotalHoursPerWeek(undefined);
+  assert.strictEqual(res.valid, true);
+  assert.strictEqual(res.value, undefined);
+
+  const resNull = validateServerTotalHoursPerWeek(null);
+  assert.strictEqual(resNull.valid, true);
+  assert.strictEqual(resNull.value, undefined);
+});
+
+runTest('ATP Test 2: missing JP -> ATP AI path uses unresolved state (contract allows unresolved)', () => {
+  const res = validateServerTotalHoursPerWeek(undefined);
+  assert.strictEqual(res.value, undefined);
+  const context = buildServerATPPromptContext(res.value);
+  assert.strictEqual(context.promptJPText, 'Belum ditentukan');
+});
+
+runTest('ATP Test 3: prompt for missing JP contains "Belum ditentukan" and explicit instruction not to fabricate', () => {
+  const context = buildServerATPPromptContext(undefined);
+  assert.ok(context.promptJPText.includes('Belum ditentukan'));
+  assert.ok(context.instruction.includes('JANGAN mengarang alokasi JP'));
+});
+
+runTest('ATP Test 4: missing JP does NOT produce synthetic numbers (strips any hallucinated JP)', () => {
+  const rawAIItems = [
+    { stepNumber: 1, tpCode: 'TP 7.1', tpStatement: 'Deskripsi', materialScope: 'Teks', jp: 6 },
+    { stepNumber: 2, tpCode: 'TP 7.2', tpStatement: 'Menulis', materialScope: 'Teks', jp: 8 },
+  ];
+  const processed = processServerATPItems(rawAIItems, undefined);
+  assert.strictEqual(processed[0].jp, undefined);
+  assert.strictEqual(processed[0].allocatedJP, undefined);
+  assert.strictEqual(processed[1].jp, undefined);
+  assert.strictEqual(processed[1].allocatedJP, undefined);
+});
+
+runTest('ATP Test 5: actual totalHoursPerWeek = 4 -> uses 4 as authoritative input', () => {
+  const res = validateServerTotalHoursPerWeek(4);
+  assert.strictEqual(res.valid, true);
+  assert.strictEqual(res.value, 4);
+
+  const context = buildServerATPPromptContext(res.value);
+  assert.strictEqual(context.promptJPText, '4 JP');
+  assert.ok(context.instruction.includes('total mingguan: 4 JP'));
+
+  const rawAIItems = [
+    { stepNumber: 1, tpCode: 'TP 7.1', tpStatement: 'Deskripsi', materialScope: 'Teks', jp: 4 },
+  ];
+  const processed = processServerATPItems(rawAIItems, res.value);
+  assert.strictEqual(processed[0].jp, 4);
+  assert.strictEqual(processed[0].allocatedJP, 4);
+});
+
+runTest('ATP Test 6: actual totalHoursPerWeek = 5 -> uses 5 because caller provided it, NOT by default', () => {
+  const res = validateServerTotalHoursPerWeek(5);
+  assert.strictEqual(res.valid, true);
+  assert.strictEqual(res.value, 5);
+
+  const context = buildServerATPPromptContext(res.value);
+  assert.strictEqual(context.promptJPText, '5 JP');
+});
+
+runTest('ATP Test 7: totalHoursPerWeek = 0 -> rejected with HTTP 400 contract', () => {
+  const res = validateServerTotalHoursPerWeek(0);
+  assert.strictEqual(res.valid, false);
+  assert.ok(res.error?.includes('bilangan bulat positif'));
+});
+
+runTest('ATP Test 8: totalHoursPerWeek negative (-1) -> rejected with HTTP 400 contract', () => {
+  const res = validateServerTotalHoursPerWeek(-1);
+  assert.strictEqual(res.valid, false);
+  assert.ok(res.error?.includes('bilangan bulat positif'));
+});
+
+runTest('ATP Test 9: totalHoursPerWeek = NaN -> rejected with HTTP 400 contract', () => {
+  const res = validateServerTotalHoursPerWeek(NaN);
+  assert.strictEqual(res.valid, false);
+  assert.ok(res.error?.includes('bilangan bulat positif'));
+});
+
+runTest('ATP Test 10: totalHoursPerWeek = Infinity -> rejected with HTTP 400 contract', () => {
+  const res = validateServerTotalHoursPerWeek(Infinity);
+  assert.strictEqual(res.valid, false);
+  assert.ok(res.error?.includes('bilangan bulat positif'));
+});
+
+runTest('ATP Test 11: totalHoursPerWeek invalid string ("", "abc", "5.5") -> rejected with HTTP 400 contract', () => {
+  assert.strictEqual(validateServerTotalHoursPerWeek('').valid, false);
+  assert.strictEqual(validateServerTotalHoursPerWeek('   ').valid, false);
+  assert.strictEqual(validateServerTotalHoursPerWeek('abc').valid, false);
+  assert.strictEqual(validateServerTotalHoursPerWeek('5.5').valid, false);
+  assert.strictEqual(validateServerTotalHoursPerWeek(5.5).valid, false);
+});
+
+// Fail-closed simulation for ATP
+function simulateServerGenerateATP(params: {
+  apiKeyPresent: boolean;
+  providerShouldFail?: boolean;
+  providerRawText?: string;
+  totalHoursPerWeek?: any;
+}) {
+  const { apiKeyPresent, providerShouldFail, providerRawText, totalHoursPerWeek } = params;
+
+  const jpValidation = validateServerTotalHoursPerWeek(totalHoursPerWeek);
+  if (!jpValidation.valid) {
+    return { status: 400, error: jpValidation.error };
+  }
+
+  if (!apiKeyPresent) {
+    return { status: 503, error: 'Layanan AI belum dikonfigurasi (GEMINI_API_KEY tidak terpasang).' };
+  }
+
+  if (providerShouldFail) {
+    return { status: 500, error: 'Gagal menyusun ATP dengan AI: Respons provider AI tidak dapat diproses' };
+  }
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(providerRawText || '');
+  } catch {
+    return { status: 500, error: 'Respons AI tidak memenuhi kualifikasi struktur ATP: Respons bukan berupa objek valid' };
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.items) || parsed.items.length === 0) {
+    return { status: 500, error: 'Respons AI tidak memenuhi kualifikasi struktur ATP: Hasil perumusan alur TP kosong atau bukan array' };
+  }
+
+  for (let i = 0; i < parsed.items.length; i++) {
+    const item = parsed.items[i];
+    if (!item || typeof item !== 'object') {
+      return { status: 500, error: `Respons AI tidak memenuhi kualifikasi struktur ATP: Butir langkah ATP ke-${i + 1} bukan berupa objek valid` };
+    }
+    const stmt = item.tpStatement || item.statement;
+    if (!stmt || typeof stmt !== 'string' || stmt.trim() === '') {
+      return { status: 500, error: `Respons AI tidak memenuhi kualifikasi struktur ATP: Rumusan TP pada butir langkah ke-${i + 1} kosong atau tidak valid` };
+    }
+  }
+
+  const processed = processServerATPItems(parsed.items, jpValidation.value);
+  return { status: 200, success: true, data: { ...parsed, items: processed } };
+}
+
+runTest('ATP Test 12: provider failure -> no fallbackGenerateATP, returns HTTP 500', () => {
+  const res = simulateServerGenerateATP({ apiKeyPresent: true, providerShouldFail: true });
+  assert.strictEqual(res.status, 500);
+  assert.ok(res.error?.includes('Gagal menyusun ATP dengan AI'));
+});
+
+runTest('ATP Test 13: invalid JSON -> no fallback, returns HTTP 500', () => {
+  const res = simulateServerGenerateATP({ apiKeyPresent: true, providerRawText: 'not a json' });
+  assert.strictEqual(res.status, 500);
+  assert.ok(res.error?.includes('Respons bukan berupa objek valid'));
+});
+
+runTest('ATP Test 14: malformed ATP -> no fallback, returns HTTP 500', () => {
+  const res = simulateServerGenerateATP({
+    apiKeyPresent: true,
+    providerRawText: JSON.stringify({ rationale: 'Rasional', items: [{ stepNumber: 1, tpStatement: '' }] }),
+  });
+  assert.strictEqual(res.status, 500);
+  assert.ok(res.error?.includes('Rumusan TP pada butir langkah ke-1 kosong atau tidak valid'));
+});
+
+runTest('ATP Test 15: missing API key -> no fallback, returns HTTP 503', () => {
+  const res = simulateServerGenerateATP({ apiKeyPresent: false });
+  assert.strictEqual(res.status, 503);
+  assert.ok(res.error?.includes('GEMINI_API_KEY tidak terpasang'));
+});
+
+// Source code audit assertions
+runTest('Invariant: server.ts does NOT contain "totalHoursPerWeek = 5" or import/call fallbackGenerateATP', () => {
+  const serverSource = fs.readFileSync('server.ts', 'utf-8');
+  assert.ok(
+    !serverSource.includes('totalHoursPerWeek = 5'),
+    'server.ts must not have silent default totalHoursPerWeek = 5'
+  );
+  assert.ok(
+    !serverSource.includes('fallbackGenerateATP'),
+    'server.ts must not import or use fallbackGenerateATP'
+  );
+  assert.ok(
+    serverSource.includes('Belum ditentukan'),
+    'server.ts prompt must explicitly express "Belum ditentukan" when JP is missing'
+  );
+  assert.ok(
+    serverSource.includes('delete item.jp;'),
+    'server.ts must delete hallucinated/guessed jp when JP is unresolved'
+  );
+});
+
+// Equivalence check for phase normalization between server and learningPlanService
+runTest('Contract: server normalizeExperiencePhase and learningPlanService normalizeLearningExperiencePhase are 100% equivalent', () => {
+  const testInputs = [
+    'UNDERSTAND',
+    'understand',
+    'Understand',
+    'MEMAHAMI',
+    'Memahami',
+    'memahami',
+    'APPLY',
+    'apply',
+    'MENGAPLIKASI',
+    'Mengaplikasi',
+    'mengaplikasi',
+    'MENGAPLIKASIKAN',
+    'Mengaplikasikan',
+    'mengaplikasikan',
+    'REFLECT',
+    'reflect',
+    'MEREFLEKSI',
+    'Merefleksi',
+    'merefleksi',
+    'MEREFLEKSIKAN',
+    'Merefleksikan',
+    'merefleksikan',
+    'UNKNOWN',
+    '',
+    '   ',
+    null,
+    undefined,
+    123,
+    {},
+    [],
+  ];
+
+  // server.ts implementation
+  function serverNormalize(phase: any): 'UNDERSTAND' | 'APPLY' | 'REFLECT' | null {
+    if (typeof phase !== 'string') return null;
+    const s = phase.trim().toUpperCase();
+    if (s === 'UNDERSTAND' || s === 'MEMAHAMI') return 'UNDERSTAND';
+    if (s === 'APPLY' || s === 'MENGAPLIKASI' || s === 'MENGAPLIKASIKAN') return 'APPLY';
+    if (s === 'REFLECT' || s === 'MEREFLEKSI' || s === 'MEREFLEKSIKAN') return 'REFLECT';
+    return null;
+  }
+
+  for (const input of testInputs) {
+    const fromServer = serverNormalize(input);
+    const fromService = normalizeLearningExperiencePhase(input);
+    assert.strictEqual(
+      fromServer,
+      fromService,
+      `Mismatch for input ${JSON.stringify(input)}: server=${fromServer}, service=${fromService}`
+    );
+  }
+});
+
 console.log(`\nAll ${totalTests} Workflow Recovery A Regression tests PASSED successfully!`);

@@ -3,19 +3,24 @@
   <head>
     <script>
       (function() {
+        function shouldSuppress(arg) {
+          if (!arg) return false;
+          var str = typeof arg === 'string' ? arg : (arg.message || String(arg));
+          return str.indexOf('[vite]') !== -1 ||
+                 str.indexOf('failed to connect to websocket') !== -1 ||
+                 str.indexOf('vite-plugin-pwa:dev-ready') !== -1;
+        }
         var origError = console.error;
         console.error = function() {
-          var msg = arguments[0];
-          if (typeof msg === 'string' && (msg.indexOf('[vite]') !== -1 || msg.indexOf('vite-plugin-pwa:dev-ready') !== -1)) {
-            return;
+          for (var i = 0; i < arguments.length; i++) {
+            if (shouldSuppress(arguments[i])) return;
           }
           return origError.apply(console, arguments);
         };
         var origWarn = console.warn;
         console.warn = function() {
-          var msg = arguments[0];
-          if (typeof msg === 'string' && msg.indexOf('[vite]') !== -1) {
-            return;
+          for (var i = 0; i < arguments.length; i++) {
+            if (shouldSuppress(arguments[i])) return;
           }
           return origWarn.apply(console, arguments);
         };
@@ -23,9 +28,9 @@
     </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Remix alco-adm-v7</title>
+    <title>alco-adm-v9</title>
     <meta name="description" content="Aplikasi Administrasi Guru Kurikulum Merdeka & K13 dengan validasi ketat alur dokumen CP, TP, ATP, dan KKTP." />
-    <meta property="og:title" content="Remix alco-adm-v7" />
+    <meta property="og:title" content="alco-adm-v9" />
     <meta property="og:description" content="Aplikasi Administrasi Guru Kurikulum Merdeka & K13 dengan validasi ketat alur dokumen CP, TP, ATP, dan KKTP." />
     <meta property="og:type" content="website" />
     <meta name="theme-color" content="#1e3a8a" />
