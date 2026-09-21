@@ -4,6 +4,7 @@ import {
   TeacherSchoolAssignment,
   SchoolData,
   AcademicSetting,
+  CurriculumType,
   ActiveContext,
   CPData,
   TPData,
@@ -100,15 +101,15 @@ export function createDefaultCalendarForSetting(
 }
 
 export function generateWorkspaceName(setting: {
-  subject: string;
-  grade: string;
+  subject?: string;
+  grade?: string;
   semester?: string;
   academicYear?: string;
 }): string {
-  const mapel = setting.subject || 'Mata Pelajaran';
-  const kelas = setting.grade || 'Kelas';
+  const mapel = setting.subject?.trim() || 'Mata Pelajaran';
+  const kelas = setting.grade?.trim() || 'Kelas -';
   const sem = setting.semester?.includes('2') ? 'Sem 2' : setting.semester?.includes('1') ? 'Sem 1' : 'Sem -';
-  const thn = setting.academicYear || '2026/2027';
+  const thn = setting.academicYear?.trim() ? setting.academicYear.trim() : 'Tahun Ajaran -';
   return `${mapel} — ${kelas} — ${sem} — ${thn}`;
 }
 
@@ -281,7 +282,7 @@ export function loadAppStorage(): AppStorageState {
 
     // Auto-migrate: ensure all academicSettings have explicit curriculumType and derived phases
     parsed.academicSettings = parsed.academicSettings.map((setting) => {
-      const derived = getPhaseFromGrade(setting.level || 'SD', setting.grade || 'Kelas 1');
+      const derived = setting.grade ? getPhaseFromGrade(setting.level || 'SD', setting.grade) : '';
       const curType = getCurriculumTypeFromSetting(setting);
       let changed = false;
       const updated = { ...setting };
@@ -703,19 +704,8 @@ export function getProfileWorkspace(profileId?: string, workspaceId?: string): P
     (d) => d.academicSettingId === academicSetting!.id || d.workspaceId === targetWs!.id
   );
 
-  // Retrieve & guarantee Students strictly for this academicSetting
-  let settingStudents = (state.students || []).filter((s) => s.academicSettingId === academicSetting!.id);
-  if (settingStudents.length === 0) {
-    settingStudents = DEFAULT_SAMPLE_STUDENTS.map((s, idx) => ({
-      id: `std-${academicSetting!.id}-${idx + 1}`,
-      academicSettingId: academicSetting!.id,
-      name: s.name,
-      gender: s.gender,
-      nisn: s.nisn,
-    }));
-    state.students = [...(state.students || []), ...settingStudents];
-    saveAppStorage(state);
-  }
+  // Retrieve Students strictly for this academicSetting
+  const settingStudents = (state.students || []).filter((s) => s.academicSettingId === academicSetting!.id);
 
   // Retrieve & guarantee Academic Calendar strictly for this academicSetting
   let calendar = (state.academicCalendars || []).find((c) => c.academicSettingId === academicSetting!.id);
@@ -890,38 +880,68 @@ export function createWorkspace(params: {
   setting: {
     curriculum?: string;
     academicYear?: string;
-    semester?: '1 (Ganjil)' | '2 (Genap)';
-    level?: 'SD' | 'SMP' | 'SMA' | 'SMK';
-    grade: string;
-    subject: string;
+    semester?: '1 (Ganjil)' | '2 (Genap)' | string;
+    level?: 'SD' | 'SMP' | 'SMA' | 'SMK' | string;
+    grade?: string;
+    subject?: string;
     totalHoursPerWeek?: number;
   };
 }): AdministrationWorkspace {
   const state = loadAppStorage();
-  const profile = state.profiles.find((p) => p.id === params.profileId) || state.profiles[0];
+  
+  let profile = state.profiles.find((p) => p.id === params.profileId);
+  if (!profile) {
+    if (params.profileId && params.profileId.trim().length > 0) {
+      throw new Error(`Profil guru dengan ID "${params.profileId}" tidak ditemukan.`);
+    }
+    profile = state.activeProfileId ? state.profiles.find((p) => p.id === state.activeProfileId) : undefined;
+    if (!profile) {
+      throw new Error('Profil guru tidak ditemukan untuk membuat administrasi baru.');
+    }
+  }
+
   // 1 Profil Guru = 1 Sekolah Utama: workspace.schoolId is strictly profile.schoolId
   const school = (profile.schoolId ? state.schools.find((s) => s.id === profile.schoolId) : undefined)
     || state.schools[0]
     || INITIAL_SCHOOL;
-  const schoolId = school.id;
+  const schoolId = profile.schoolId || school.id;
 
   const newSettingId = `acad-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-  const level = params.setting.level || profile.defaultLevel || 'SD';
-  const derivedPhase = getPhaseFromGrade(level, params.setting.grade);
-  const curType = params.setting.curriculum === 'Kurikulum 2013' ? 'K13' : 'KURIKULUM_MERDEKA';
+  
+  const level = params.setting.level || profile.defaultLevel || '';
+  const grade = params.setting.grade?.trim() || '';
+  const derivedPhase = (level && grade) ? getPhaseFromGrade(level, grade) : '';
+
+  let curriculum = params.setting.curriculum?.trim() || '';
+  let curType: CurriculumType | undefined = undefined;
+
+  if (curriculum === 'Kurikulum 2013' || curriculum === 'K13') {
+    curriculum = 'Kurikulum 2013';
+    curType = 'K13';
+  } else if (curriculum === 'Kurikulum Merdeka' || curriculum === 'KURIKULUM_MERDEKA') {
+    curriculum = 'Kurikulum Merdeka';
+    curType = 'KURIKULUM_MERDEKA';
+  } else if (curriculum) {
+    curType = curriculum.toLowerCase().includes('2013') || curriculum.toLowerCase().includes('k13') ? 'K13' : 'KURIKULUM_MERDEKA';
+  }
+
+  const subject = params.setting.subject?.trim() || profile.defaultSubject || '';
+  const academicYear = params.setting.academicYear?.trim() || '';
+  const semester = params.setting.semester || '';
+  const totalHoursPerWeek = params.setting.totalHoursPerWeek ? Number(params.setting.totalHoursPerWeek) : undefined;
 
   const newSetting: AcademicSetting = {
     id: newSettingId,
     profileId: profile.id,
-    curriculum: params.setting.curriculum || (curType === 'K13' ? 'Kurikulum 2013' : 'Kurikulum Merdeka'),
+    curriculum,
     curriculumType: curType,
-    academicYear: params.setting.academicYear || '2026/2027',
-    semester: params.setting.semester || '1 (Ganjil)',
-    level,
-    grade: params.setting.grade || 'Kelas 1',
+    academicYear,
+    semester: semester as any,
+    level: level as any,
+    grade,
     phase: derivedPhase,
-    subject: params.setting.subject || 'Mata Pelajaran',
-    totalHoursPerWeek: params.setting.totalHoursPerWeek || 4,
+    subject,
+    totalHoursPerWeek,
     updatedAt: new Date().toISOString(),
   };
 
@@ -939,17 +959,8 @@ export function createWorkspace(params: {
     updatedAt: new Date().toISOString(),
   };
 
-  const initialStudents: Student[] = DEFAULT_SAMPLE_STUDENTS.map((s, idx) => ({
-    id: `std-${newSettingId}-${idx + 1}`,
-    academicSettingId: newSettingId,
-    name: s.name,
-    gender: s.gender,
-    nisn: s.nisn,
-  }));
-
   state.academicSettings.push(newSetting);
   state.workspaces.push(newWorkspace);
-  state.students = [...(state.students || []), ...initialStudents];
 
   if (curType === 'KURIKULUM_MERDEKA') {
     // Merdeka: Create CP, TP, ATP instances strictly for Merdeka workspace
@@ -980,22 +991,12 @@ export function createWorkspace(params: {
     state.cps.push(newCP);
     state.tps.push(newTP);
     state.atps.push(newATP);
-  } else {
-    // K13: Create K13Analysis and K13KKM instances. DO NOT create CP/TP/ATP!
+  } else if (curType === 'K13') {
+    // K13: Create K13Analysis and K13KKM instances.
     const newK13Analysis: K13Analysis = {
       id: `k13-ana-${newSettingId}`,
       academicSettingId: newSettingId,
-      items: [
-        {
-          id: `k13-item-${Date.now()}-1`,
-          skl: 'Memiliki perilaku yang mencerminkan sikap orang beriman, berakhlak mulia, dan bertanggung jawab.',
-          ki: 'KI-3 (Pengetahuan) & KI-4 (Keterampilan)',
-          kd: '3.1 Memahami konsep dan prinsip dasar pembelajaran.',
-          indikator: '3.1.1 Mengidentifikasi prinsip dan konsep dasar materi pokok.',
-          materi: 'Materi Pokok Pembelajaran Semester Aktif',
-          kegiatan: 'Pendekatan Saintifik (5M: Mengamati, Menanya, Mengumpulkan Informasi, Menalar, Mengomunikasikan)',
-        },
-      ],
+      items: [],
       updatedAt: new Date().toISOString(),
     };
 
@@ -1006,17 +1007,7 @@ export function createWorkspace(params: {
       predikatA: 89,
       predikatB: 79,
       predikatC: 70,
-      items: [
-        {
-          id: `kkm-item-${Date.now()}-1`,
-          kd: '3.1 Memahami konsep dan prinsip dasar pembelajaran',
-          indikator: 'Mengidentifikasi prinsip dan konsep dasar materi pokok',
-          kompleksitas: 75,
-          dayaDukung: 78,
-          intake: 74,
-          kkmIndikator: 76,
-        },
-      ],
+      items: [],
       updatedAt: new Date().toISOString(),
     };
 
@@ -1612,7 +1603,7 @@ export function saveCPAnalysis(analysis: CPAnalysisData): void {
 
 export function saveAcademicSetting(setting: AcademicSetting, customWorkspaceName?: string): void {
   const current = loadAppStorage();
-  const derived = getPhaseFromGrade(setting.level || 'SD', setting.grade || 'Kelas 1');
+  const derived = setting.grade ? getPhaseFromGrade(setting.level || 'SD', setting.grade) : '';
   const normalized = { ...setting, phase: derived, updatedAt: new Date().toISOString() };
 
   const idx = current.academicSettings.findIndex((a) => a.id === setting.id);

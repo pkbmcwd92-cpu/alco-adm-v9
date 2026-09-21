@@ -15,12 +15,22 @@ export interface WorkflowStepItem {
  */
 export function getCurriculumTypeFromSetting(
   setting?: AcademicSetting | { curriculum?: string; curriculumType?: CurriculumType } | null
-): CurriculumType {
-  if (!setting) return 'KURIKULUM_MERDEKA';
+): CurriculumType | undefined {
+  if (!setting) return undefined;
   if (setting.curriculumType === 'K13' || setting.curriculumType === 'KURIKULUM_MERDEKA') {
     return setting.curriculumType;
   }
-  return getCurriculumType(setting.curriculum);
+  if (!setting.curriculum || !setting.curriculum.trim()) {
+    return undefined;
+  }
+  const curr = setting.curriculum.toLowerCase();
+  if (curr.includes('k13') || curr.includes('2013')) {
+    return 'K13';
+  }
+  if (curr.includes('merdeka')) {
+    return 'KURIKULUM_MERDEKA';
+  }
+  return undefined;
 }
 
 /**
