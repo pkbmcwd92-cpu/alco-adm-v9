@@ -378,9 +378,10 @@ export function recommendInstrumentsForCompetency(params: {
     'mempraktikkan', 'melakukan', 'memeragakan', 'bermain', 'senam', 'lari',
     'melempar', 'menendang', 'menangkap', 'melompat', 'gerak dasar', 'lokomotor',
     'nonlokomotor', 'manipulatif', 'keterampilan gerak', 'kebugaran', 'renang',
-    'atletik', 'senam lantai', 'unjuk kerja', 'simulasi', 'demonstrasi',
+    'atletik', 'senam lantai', 'unjuk kerja', 'simulasi', 'demonstrasi', 'mendemonstrasikan',
     'memainkan alat', 'berpidato', 'membaca puisi', 'menyanyikan', 'menari',
-    'pola gerak', 'aktivitas jasmani', 'mengoperasikan', 'merangkai alat', 'percobaan'
+    'pola gerak', 'aktivitas jasmani', 'mengoperasikan', 'merangkai alat', 'percobaan',
+    'mempresentasikan', 'presentasi'
   ];
 
   // 2. Indikator Kognitif / Konseptual
@@ -388,14 +389,15 @@ export function recommendInstrumentsForCompetency(params: {
     'menjelaskan', 'mengidentifikasi', 'menganalisis', 'memahami', 'menyebutkan',
     'membedakan', 'menguraikan', 'menghitung', 'menentukan', 'merumuskan',
     'menyimpulkan', 'menafsirkan', 'mengklasifikasikan', 'mengevaluasi konsep',
-    'konsep', 'teori', 'prinsip', 'aturan', 'prosedur', 'menelaah'
+    'konsep', 'teori', 'prinsip', 'aturan', 'prosedur', 'menelaah', 'mengkaji'
   ];
 
   // 3. Indikator Produk / Projek / Karya
   const productKeywords = [
     'membuat karya', 'menciptakan karya', 'menggambar karya', 'menulis laporan',
     'merancang produk', 'membuat produk', 'karya seni', 'projek', 'poster',
-    'laporan hasil', 'produk kerajinan', 'makalah'
+    'laporan hasil', 'produk kerajinan', 'makalah', 'proyek', 'membuat video',
+    'menyusun laporan'
   ];
 
   const hasPsychomotor = psychomotorKeywords.some((kw) => fullText.includes(kw));
@@ -407,6 +409,10 @@ export function recommendInstrumentsForCompetency(params: {
   if (hasPsychomotor && hasCognitive) {
     // Campuran motorik & kognitif -> multi-instrumen
     recommendedTypes.push('PERFORMANCE', 'WRITTEN_TEST');
+  } else if (hasPsychomotor && hasProduct) {
+    recommendedTypes.push('PERFORMANCE', 'PRODUCT');
+  } else if (hasCognitive && hasProduct) {
+    recommendedTypes.push('PRODUCT', 'ASSIGNMENT');
   } else if (hasPsychomotor) {
     // Psikomotor murni / kinerja gerak -> PERFORMANCE & OBSERVATION
     recommendedTypes.push('PERFORMANCE', 'OBSERVATION');
@@ -417,8 +423,10 @@ export function recommendInstrumentsForCompetency(params: {
     // Kognitif murni -> WRITTEN_TEST
     recommendedTypes.push('WRITTEN_TEST');
   } else {
-    // Fallback: Asesmen formatif awal/standar
-    recommendedTypes.push('WRITTEN_TEST');
+    // Karakter kompetensi tidak dapat ditentukan secara otomatis -> return [] (unresolved)
+    // Unknown competency MUST NOT default to WRITTEN_TEST.
+    // Guru wajib memilih instrumen asesmen secara manual sebelum status dapat menjadi SIAP.
+    return [];
   }
 
   const now = Date.now();
@@ -683,6 +691,11 @@ export function deriveAutoDraftAssessmentPlan(
     subject: setting.subject,
   });
 
+  const hasUnresolvedInstruments = recommendedInstruments.length === 0;
+  if (hasUnresolvedInstruments) {
+    warnings.push('Instrumen asesmen perlu dipilih guru karena karakter kompetensi belum dapat ditentukan secara otomatis.');
+  }
+
   // 4. Hubungkan kriteria KKTP kanonikal jika tersedia
   const matchingCriteria = (params.assessmentCriteria || []).filter((c) => c.tpId === resolvedObj!.id);
   const criterionIds = matchingCriteria.map((c) => c.id);
@@ -697,6 +710,10 @@ export function deriveAutoDraftAssessmentPlan(
       ? `Asesmen Formatif: [${resolvedObj.code}] ${resolvedObj.statement.slice(0, 50)}${resolvedObj.statement.length > 50 ? '...' : ''}`
       : `Asesmen Formatif: ${resolvedObj.statement.slice(0, 50)}...`
   );
+
+  const reviewReason = hasUnresolvedInstruments
+    ? 'Instrumen asesmen perlu dipilih guru karena karakter kompetensi belum dapat ditentukan secara otomatis.'
+    : 'Draf rencana asesmen disusun otomatis dari data kanonikal. Harap guru meninjau dan mengonfirmasi menjadi SIAP.';
 
   const plan = createAIDraftAssessmentPlan({
     academicSettingId: setting.id,
@@ -716,7 +733,7 @@ export function deriveAutoDraftAssessmentPlan(
       ...plan,
       workflowStatus: 'DRAFT',
       needsReview: true,
-      reviewReason: 'Draf rencana asesmen disusun otomatis dari data kanonikal. Harap guru meninjau dan mengonfirmasi menjadi SIAP.',
+      reviewReason,
       provenance: {
         generatedBy: 'SYSTEM',
         engine: 'AUTO_DRAFT',

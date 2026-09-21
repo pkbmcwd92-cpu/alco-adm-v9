@@ -203,9 +203,74 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
     setIsModalOpen(true);
   };
 
-  // Batch Auto-Draft from Canonical Context (AUTO GENERATE FIRST)
+  // Guard to track TP IDs provisioned during this component session to prevent in-flight duplicate calls
+  const provisionedTpIdsRef = React.useRef<Set<string>>(new Set());
+
+  // Automatic Assessment Draft Provisioning (AUTO GENERATE FIRST)
+  // Ensures that whenever canonical TP/KD are present, missing AssessmentPlan DRAFTs are created automatically
+  // without requiring the teacher to click any button. Idempotent and non-destructive.
+  React.useEffect(() => {
+    if (!academicSetting) return;
+
+    // 1. Gather all canonical objective IDs
+    const canonicalIds: string[] = [];
+    if (isMerdeka(academicSetting) && tp?.items) {
+      tp.items.forEach((item) => canonicalIds.push(item.id));
+    } else if (isK13(academicSetting) && k13Analysis?.items) {
+      k13Analysis.items.forEach((item) => canonicalIds.push(item.id));
+    }
+
+    if (canonicalIds.length === 0) return;
+
+    // 2. Identify all objective IDs already represented in existing plans
+    const representedIds = new Set<string>();
+    (assessmentPlans || []).forEach((plan) => {
+      (plan.tpIds || []).forEach((id) => {
+        representedIds.add(id);
+        provisionedTpIdsRef.current.add(id);
+      });
+    });
+
+    // 3. Check if there are any canonical objectives not yet represented and not yet provisioned in-flight
+    const unprovisionedIds = canonicalIds.filter(
+      (id) => !representedIds.has(id) && !provisionedTpIdsRef.current.has(id)
+    );
+
+    if (unprovisionedIds.length === 0) return;
+
+    // Immediately record unprovisioned IDs in the ref to prevent re-entrant or duplicate calls before async state flush
+    unprovisionedIds.forEach((id) => provisionedTpIdsRef.current.add(id));
+
+    // 4. Generate missing drafts using the canonical existing generator
+    const newDrafts = generateAutoDraftPlansFromCanonicalContext({
+      academicSetting,
+      workspaceId: workspace?.id,
+      tp,
+      k13Analysis,
+      assessmentCriteria,
+      learningPlans,
+      existingPlans: assessmentPlans,
+    });
+
+    if (newDrafts.length > 0) {
+      newDrafts.forEach((draft) => {
+        (draft.tpIds || []).forEach((id) => provisionedTpIdsRef.current.add(id));
+        onSaveAssessmentPlan(draft);
+      });
+    }
+  }, [
+    academicSetting,
+    tp,
+    k13Analysis,
+    assessmentCriteria,
+    learningPlans,
+    assessmentPlans,
+    workspace?.id,
+    onSaveAssessmentPlan,
+  ]);
+
+  // Batch Auto-Draft from Canonical Context (Manual Sync / Recovery Action)
   const handleBatchAutoDraft = () => {
-    if (availableObjectives.length === 0) return;
     const newDrafts = generateAutoDraftPlansFromCanonicalContext({
       academicSetting,
       workspaceId: workspace?.id,
@@ -217,11 +282,12 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
     });
 
     if (newDrafts.length === 0) {
-      alert('Semua Tujuan Pembelajaran kanonikal sudah memiliki Rencana Asesmen.');
+      alert('Semua TP/KD sudah memiliki Rencana Asesmen.');
       return;
     }
 
     newDrafts.forEach((draft) => {
+      (draft.tpIds || []).forEach((id) => provisionedTpIdsRef.current.add(id));
       onSaveAssessmentPlan(draft);
     });
   };
@@ -422,17 +488,18 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-3 shrink-0">
-            {availableObjectives.length > 0 && (
-              <button
-                type="button"
-                onClick={handleBatchAutoDraft}
-                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
-                title="Generate draf rencana asesmen secara otomatis dari data TP kanonikal"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>Draf Otomatis ({availableObjectives.length} {isMerdeka(academicSetting) ? 'TP' : 'KD'})</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleBatchAutoDraft}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
+              title="Sinkronisasi manual untuk TP/KD yang belum memiliki Rencana Asesmen"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>
+                Draf Otomatis
+                {availableObjectives.length > 0 ? ` (${availableObjectives.length} ${isMerdeka(academicSetting) ? 'TP' : 'KD'})` : ''}
+              </span>
+            </button>
             <button
               type="button"
               onClick={() => handleOpenNew()}
