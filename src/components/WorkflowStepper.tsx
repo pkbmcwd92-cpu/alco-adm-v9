@@ -36,14 +36,14 @@ import { validateWorkflowDependencies, WorkflowStatus } from '../services/workfl
 interface WorkflowStepperProps {
   currentStep: WorkflowStepId;
   onSelectStep: (step: WorkflowStepId) => void;
-  profile: TeacherProfile;
-  school: SchoolData;
+  profile?: TeacherProfile;
+  school?: SchoolData;
   workspace?: AdministrationWorkspace;
-  academicSetting: AcademicSetting;
-  cp: CPData;
+  academicSetting?: AcademicSetting;
+  cp?: CPData;
   cpAnalysis?: CPAnalysisData;
-  tp: TPData;
-  atp: ATPData;
+  tp?: TPData;
+  atp?: ATPData;
   k13Analysis?: K13Analysis;
   k13KKM?: K13KKM;
 }
@@ -269,16 +269,16 @@ export const WorkflowStepper: React.FC<WorkflowStepperProps> = ({
               )}
             </div>
             <h2 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
-              <span>{academicSetting.subject || 'Mata Pelajaran'}</span>
+              <span>{academicSetting?.subject || 'Belum Ada Konfigurasi'}</span>
               <span className="text-slate-400 font-normal text-sm">
-                • {academicSetting.grade}
-                {!isK13Active && academicSetting.phase ? ` (${academicSetting.phase})` : ''}
+                {academicSetting?.grade ? `• ${academicSetting.grade}` : ''}
+                {!isK13Active && academicSetting?.phase ? ` (${academicSetting.phase})` : ''}
               </span>
             </h2>
             <p className="text-xs text-blue-200 flex items-center gap-1.5">
               <School className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-              <span>{school.name || 'Satuan Pendidikan'}</span>
-              {school.district && (
+              <span>{school?.name || 'Satuan Pendidikan'}</span>
+              {school?.district && (
                 <>
                   <span className="text-slate-500">•</span>
                   <span className="text-slate-300">{school.district}</span>
@@ -291,8 +291,8 @@ export const WorkflowStepper: React.FC<WorkflowStepperProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 lg:pt-0 border-t border-slate-800/80 lg:border-t-0">
             <div className="bg-slate-800/60 rounded-xl p-2.5 border border-slate-700/60">
               <span className="text-[10px] text-slate-400 uppercase font-semibold block">Mata Pelajaran</span>
-              <span className="text-xs font-bold text-white truncate block" title={academicSetting.subject}>
-                {academicSetting.subject || '-'}
+              <span className="text-xs font-bold text-white truncate block" title={academicSetting?.subject || ''}>
+                {academicSetting?.subject || '-'}
               </span>
             </div>
             <div className="bg-slate-800/60 rounded-xl p-2.5 border border-slate-700/60">
@@ -300,21 +300,23 @@ export const WorkflowStepper: React.FC<WorkflowStepperProps> = ({
                 {isK13Active ? 'Tingkat / Kelas' : 'Kelas & Fase'}
               </span>
               <span className="text-xs font-bold text-blue-300 truncate block">
-                {isK13Active
-                  ? academicSetting.grade
-                  : `${academicSetting.grade} • ${academicSetting.phase}`}
+                {academicSetting?.grade
+                  ? (isK13Active ? academicSetting.grade : `${academicSetting.grade}${academicSetting.phase ? ` • ${academicSetting.phase}` : ''}`)
+                  : '-'}
               </span>
             </div>
             <div className="bg-slate-800/60 rounded-xl p-2.5 border border-slate-700/60">
               <span className="text-[10px] text-slate-400 uppercase font-semibold block">Tahun Ajaran</span>
               <span className="text-xs font-bold text-white truncate block">
-                {academicSetting.academicYear} (Sem {academicSetting.semester?.startsWith('1') ? '1' : '2'})
+                {academicSetting?.academicYear
+                  ? `${academicSetting.academicYear} ${academicSetting.semester ? `(Sem ${academicSetting.semester.startsWith('1') ? '1' : '2'})` : ''}`
+                  : '-'}
               </span>
             </div>
             <div className="bg-slate-800/60 rounded-xl p-2.5 border border-slate-700/60">
               <span className="text-[10px] text-slate-400 uppercase font-semibold block">Kurikulum</span>
               <span className="text-xs font-bold text-emerald-400 truncate block">
-                {academicSetting.curriculum}
+                {academicSetting?.curriculum || '-'}
               </span>
             </div>
           </div>

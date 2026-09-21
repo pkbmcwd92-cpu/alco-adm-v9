@@ -173,10 +173,10 @@ export function App() {
     }
 
     createWorkspace({
-      profileId: activeProfile.id,
-      schoolId: activeSchool.id,
+      profileId: activeProfile?.id || '',
+      schoolId: activeSchool?.id || '',
       setting: {
-        level: activeProfile.defaultLevel || 'SD',
+        level: activeProfile?.defaultLevel || 'SD',
         grade: newWsGrade,
         subject: newWsSubject.trim(),
         semester: newWsSemester,
@@ -301,8 +301,8 @@ export function App() {
     refreshData();
   };
 
-  const availableGrades = GRADE_PHASE_MAP[activeProfile.defaultLevel || 'SD'] || [];
-  const availableSubjects = SUBJECT_OPTIONS[activeProfile.defaultLevel || 'SD'] || [];
+  const availableGrades = GRADE_PHASE_MAP[activeProfile?.defaultLevel || 'SD'] || [];
+  const availableSubjects = SUBJECT_OPTIONS[activeProfile?.defaultLevel || 'SD'] || [];
 
   return (
     <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
@@ -342,7 +342,7 @@ export function App() {
           {currentStep === 'profile' && (
             <ProfileManager
               profiles={dataStore.profiles}
-              activeProfileId={activeProfile.id}
+              activeProfileId={activeProfile?.id || ''}
               activeSchool={activeSchool}
               schools={dataStore.schools}
               principalHistories={dataStore.principalHistories || []}

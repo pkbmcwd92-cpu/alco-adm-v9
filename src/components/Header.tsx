@@ -5,7 +5,7 @@ import { PWAInstallButton } from './PWAInstallButton';
 import { useOnlineStatus } from '../hooks/usePWAInstall';
 
 interface HeaderProps {
-  activeProfile: TeacherProfile;
+  activeProfile?: TeacherProfile;
   school: SchoolData;
   profiles: TeacherProfile[];
   workspaces: AdministrationWorkspace[];

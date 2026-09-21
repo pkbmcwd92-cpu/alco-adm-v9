@@ -483,88 +483,33 @@ export function getProfileWorkspace(profileId?: string, workspaceId?: string): P
 
   if (!profile) {
     const emptySchool: SchoolData = state.schools[0] || { ...INITIAL_SCHOOL };
-    const emptyProfile: TeacherProfile = {
-      id: '',
-      name: '',
-      nip: '',
-      nuptk: '',
-      status: 'PNS',
-      defaultSubject: '',
-      defaultLevel: 'SD',
-      schoolId: emptySchool.id,
-      createdAt: '',
-      updatedAt: '',
-    };
-    const emptyWorkspace: AdministrationWorkspace = {
-      id: '',
-      profileId: '',
-      schoolId: emptySchool.id,
-      academicSettingId: '',
-      name: '',
-      createdAt: '',
-      updatedAt: '',
-    };
-    const emptyAcademicSetting: AcademicSetting = {
-      id: '',
-      profileId: '',
-      curriculum: 'Kurikulum Merdeka',
-      academicYear: '2026/2027',
-      semester: '1 (Ganjil)',
-      level: 'SD',
-      grade: 'Kelas 1',
-      phase: 'Fase A',
-      subject: '',
-      totalHoursPerWeek: 0,
-      updatedAt: '',
-    };
-    const emptyContext = buildActiveContext(emptyProfile, emptySchool, emptyAcademicSetting);
-    const emptyCp: CPData = {
-      id: '',
-      academicSettingId: '',
-      generalDescription: '',
-      elements: [],
-      updatedAt: '',
-    };
-    const emptyTp: TPData = {
-      id: '',
-      academicSettingId: '',
-      items: [],
-      updatedAt: '',
-    };
-    const emptyAtp: ATPData = {
-      id: '',
-      academicSettingId: '',
-      rationale: '',
-      items: [],
-      totalJP: 0,
-      updatedAt: '',
-    };
 
     return {
-      profile: emptyProfile,
+      status: 'NO_PROFILE',
+      profile: undefined,
       school: emptySchool,
       schools: state.schools || [{ ...INITIAL_SCHOOL }],
       teacherSchoolAssignments: [],
       assignedSchools: [emptySchool],
       principalHistories: state.principalHistories || [],
-      workspace: emptyWorkspace,
-      academicSetting: emptyAcademicSetting,
-      context: emptyContext,
-      cp: emptyCp,
+      workspace: undefined,
+      academicSetting: undefined,
+      context: undefined,
+      cp: undefined,
       cpAnalysis: undefined,
-      tp: emptyTp,
-      atp: emptyAtp,
+      tp: undefined,
+      atp: undefined,
       documents: [],
       allWorkspaces: [],
       allWorkspacesForProfile: [],
-      activeProfile: emptyProfile,
+      activeProfile: undefined,
       activeSchool: emptySchool,
-      activeWorkspace: emptyWorkspace,
-      activeAcademicSetting: emptyAcademicSetting,
-      activeContext: emptyContext,
-      activeCP: emptyCp,
-      activeTP: emptyTp,
-      activeATP: emptyAtp,
+      activeWorkspace: undefined,
+      activeAcademicSetting: undefined,
+      activeContext: undefined,
+      activeCP: undefined,
+      activeTP: undefined,
+      activeATP: undefined,
       students: [],
       calendar: undefined,
       calendarDays: [],
@@ -614,21 +559,22 @@ export function getProfileWorkspace(profileId?: string, workspaceId?: string): P
     targetWs = profileWorkspaces.find((w) => w.id === state.activeWorkspaceId) || profileWorkspaces[0];
   }
 
-  // If no workspace exists for this profile, bootstrap one automatically
+  // If no workspace exists for this profile, bootstrap one automatically with unresolved academic facts
   if (profile.id && !targetWs) {
     const newSettingId = `acad-${profile.id}-${Date.now()}`;
-    const derivedPhase = getPhaseFromGrade(profile.defaultLevel || 'SD', 'Kelas 1');
     const newSetting: AcademicSetting = {
       id: newSettingId,
       profileId: profile.id,
-      curriculum: 'Kurikulum Merdeka',
-      academicYear: '2026/2027',
-      semester: '1 (Ganjil)',
-      level: profile.defaultLevel || 'SD',
-      grade: 'Kelas 1',
-      phase: derivedPhase,
-      subject: profile.defaultSubject || 'Bahasa Indonesia',
-      totalHoursPerWeek: 4,
+      curriculum: '',
+      curriculumType: undefined,
+      academicYear: '',
+      semester: '' as any,
+      level: profile.defaultLevel || ('' as any),
+      grade: '',
+      phase: '',
+      subject: profile.defaultSubject || '',
+      subjectWeeklyJP: undefined,
+      totalHoursPerWeek: undefined,
       updatedAt: new Date().toISOString(),
     };
 
@@ -637,7 +583,7 @@ export function getProfileWorkspace(profileId?: string, workspaceId?: string): P
       profileId: profile.id,
       schoolId: school.id,
       academicSettingId: newSettingId,
-      name: generateWorkspaceName(newSetting),
+      name: profile.name ? `Administrasi — ${profile.name}` : 'Administrasi Baru',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -652,29 +598,32 @@ export function getProfileWorkspace(profileId?: string, workspaceId?: string): P
 
   // Retrieve Academic Setting for this workspace
   let academicSetting = state.academicSettings.find((a) => a.id === targetWs!.academicSettingId);
-  if (!academicSetting) {
-    const derivedPhase = getPhaseFromGrade(profile.defaultLevel || 'SD', 'Kelas 1');
+  if (!academicSetting && targetWs) {
     academicSetting = {
       id: targetWs.academicSettingId,
       profileId: profile.id,
-      curriculum: 'Kurikulum Merdeka',
-      academicYear: '2026/2027',
-      semester: '1 (Ganjil)',
-      level: profile.defaultLevel || 'SD',
-      grade: 'Kelas 1',
-      phase: derivedPhase,
-      subject: profile.defaultSubject || 'Bahasa Indonesia',
-      totalHoursPerWeek: 4,
+      curriculum: '',
+      curriculumType: undefined,
+      academicYear: '',
+      semester: '' as any,
+      level: profile.defaultLevel || ('' as any),
+      grade: '',
+      phase: '',
+      subject: profile.defaultSubject || '',
+      subjectWeeklyJP: undefined,
+      totalHoursPerWeek: undefined,
       updatedAt: new Date().toISOString(),
     };
     state.academicSettings.push(academicSetting);
     saveAppStorage(state);
   }
 
-  // Ensure derived phase is always up to date
-  const derivedPhase = getPhaseFromGrade(academicSetting.level, academicSetting.grade);
-  if (academicSetting.phase !== derivedPhase) {
-    academicSetting.phase = derivedPhase;
+  // Ensure derived phase is always up to date if level and grade exist
+  if (academicSetting) {
+    const derivedPhase = getPhaseFromGrade(academicSetting.level, academicSetting.grade);
+    if (derivedPhase && academicSetting.phase !== derivedPhase) {
+      academicSetting.phase = derivedPhase;
+    }
   }
 
   // Build the unified single source of truth activeContext

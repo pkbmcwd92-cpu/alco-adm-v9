@@ -1396,15 +1396,16 @@ export interface AppDocumentRecord {
 }
 
 export interface ProfileWorkspaceData {
-  profile: TeacherProfile;
+  status?: 'RESOLVED' | 'NO_PROFILE';
+  profile?: TeacherProfile;
   school: SchoolData;
-  workspace: AdministrationWorkspace;
-  academicSetting: AcademicSetting;
-  context: ActiveContext;
-  cp: CPData;
+  workspace?: AdministrationWorkspace;
+  academicSetting?: AcademicSetting;
+  context?: ActiveContext;
+  cp?: CPData;
   cpAnalysis?: CPAnalysisData;
-  tp: TPData;
-  atp: ATPData;
+  tp?: TPData;
+  atp?: ATPData;
   documents: AppDocumentRecord[];
   allWorkspaces: AdministrationWorkspace[];
   allWorkspacesForProfile?: AdministrationWorkspace[];

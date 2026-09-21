@@ -56,7 +56,8 @@ export const GRADE_PHASE_MAP: Record<string, { grade: string; phase: string; lev
  * Centrally derived Phase from Education Level and Grade.
  * Phase cannot be freely edited.
  */
-export function getPhaseFromGrade(level: string = 'SD', grade: string = 'Kelas 1'): string {
+export function getPhaseFromGrade(level: string = 'SD', grade: string = ''): string {
+  if (!grade || !grade.trim()) return '';
   const normLevel = (level.toUpperCase() in GRADE_PHASE_MAP ? level.toUpperCase() : 'SD') as keyof typeof GRADE_PHASE_MAP;
   const grades = GRADE_PHASE_MAP[normLevel] || GRADE_PHASE_MAP.SD;
   
@@ -66,6 +67,7 @@ export function getPhaseFromGrade(level: string = 'SD', grade: string = 'Kelas 1
 
   // Partial or numeric matching
   const num = parseInt(grade.replace(/[^0-9]/g, ''), 10);
+  if (isNaN(num)) return '';
   if (normLevel === 'SD') {
     if (num <= 2) return 'Fase A';
     if (num <= 4) return 'Fase B';
@@ -78,7 +80,7 @@ export function getPhaseFromGrade(level: string = 'SD', grade: string = 'Kelas 1
     if (num === 10) return 'Fase E';
     return 'Fase F';
   }
-  return 'Fase A';
+  return '';
 }
 
 /**
@@ -89,20 +91,21 @@ export function buildActiveContext(
   school: SchoolData,
   setting: AcademicSetting
 ): ActiveContext {
-  const derivedPhase = getPhaseFromGrade(setting.level || profile.defaultLevel || 'SD', setting.grade || 'Kelas 4');
-  const curType = setting.curriculumType || (setting.curriculum === 'Kurikulum 2013' ? 'K13' : 'KURIKULUM_MERDEKA');
+  const derivedPhase = setting.phase || getPhaseFromGrade(setting.level || profile?.defaultLevel || 'SD', setting.grade || '');
+  const curType = setting.curriculumType || (setting.curriculum === 'Kurikulum 2013' ? 'K13' : (setting.curriculum ? 'KURIKULUM_MERDEKA' : undefined));
   return {
-    profileId: profile.id,
-    schoolId: school.id || profile.schoolId,
-    curriculum: setting.curriculum || 'Kurikulum Merdeka',
+    profileId: profile?.id || '',
+    schoolId: school?.id || profile?.schoolId || '',
+    curriculum: setting.curriculum || '',
     curriculumType: curType,
-    academicYear: setting.academicYear || '2025/2026',
-    semester: setting.semester || '1 (Ganjil)',
-    level: setting.level || profile.defaultLevel || 'SD',
-    grade: setting.grade || 'Kelas 4',
-    phase: derivedPhase,
-    subject: setting.subject || profile.defaultSubject || 'Bahasa Indonesia',
-    totalHoursPerWeek: setting.totalHoursPerWeek || 5,
+    academicYear: setting.academicYear || '',
+    semester: setting.semester || '',
+    level: setting.level || profile?.defaultLevel || '',
+    grade: setting.grade || '',
+    phase: derivedPhase || '',
+    subject: setting.subject || profile?.defaultSubject || '',
+    subjectWeeklyJP: setting.subjectWeeklyJP,
+    totalHoursPerWeek: setting.totalHoursPerWeek,
   };
 }
 
