@@ -356,6 +356,78 @@ assert.strictEqual(migratedSetting.level, '', 'Missing level remains unresolved'
 assert.strictEqual(migratedSetting.phase, '', 'Phase becomes unresolved when level is missing (must NOT fallback to SD/Fase A)');
 console.log('✓ TEST 11B PASSED');
 
+// TEST A: getProfileWorkspace getter immutability with stale phase
+console.log('\n[TEST A] Verifying getProfileWorkspace getter immutability with stale phase...');
+const staleStore = loadAppStorage();
+const staleSettingId = `acad-stale-${Date.now()}`;
+staleStore.academicSettings.push({
+  id: staleSettingId,
+  profileId: profile.id,
+  curriculum: 'Kurikulum Merdeka',
+  curriculumType: 'KURIKULUM_MERDEKA',
+  level: 'SD',
+  grade: 'Kelas 4',
+  phase: 'Fase A', // Stale phase in canonical storage
+  subject: 'IPAS',
+  academicYear: '2025/2026',
+  semester: '1 (Ganjil)',
+  updatedAt: new Date().toISOString(),
+});
+const staleWsId = `ws-stale-${Date.now()}`;
+staleStore.workspaces.push({
+  id: staleWsId,
+  profileId: profile.id,
+  schoolId: createdSchool.id,
+  academicSettingId: staleSettingId,
+  name: 'IPAS — Kelas 4',
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+});
+saveAppStorage(staleStore);
+
+// Snapshot storage BEFORE calling getProfileWorkspace
+const storageBeforeA = JSON.stringify(loadAppStorage());
+
+// Call getProfileWorkspace getter
+const wsDataA = getProfileWorkspace(profile.id, staleWsId);
+
+// Assert returned object displays derived phase 'Fase B'
+assert.strictEqual(wsDataA.academicSetting?.phase, 'Fase B', 'Returned academicSetting displays derived phase Fase B for SD Kelas 4');
+
+// Snapshot storage AFTER calling getProfileWorkspace
+const storageAfterA = JSON.stringify(loadAppStorage());
+
+// Assert canonical storage before and after getter are identical
+assert.strictEqual(storageBeforeA, storageAfterA, 'getProfileWorkspace getter MUST NOT mutate canonical storage');
+console.log('✓ TEST A PASSED');
+
+// TEST B: Migration valid level + grade
+console.log('\n[TEST B] Verifying migration on valid level + grade derives correct phase...');
+const legacyStore = loadAppStorage();
+const legacySettingIdValid = `acad-legacy-valid-${Date.now()}`;
+legacyStore.academicSettings.push({
+  id: legacySettingIdValid,
+  profileId: profile.id,
+  curriculum: 'Kurikulum Merdeka',
+  curriculumType: 'KURIKULUM_MERDEKA',
+  level: 'SD',
+  grade: 'Kelas 4',
+  phase: '', // Empty/stale phase on legacy data
+  subject: 'IPAS',
+  academicYear: '2025/2026',
+  semester: '1 (Ganjil)',
+  updatedAt: new Date().toISOString(),
+});
+saveAppStorage(legacyStore);
+
+// Trigger migration via loadAppStorage()
+const reloadedLegacyStore = loadAppStorage();
+const migratedValidSetting = reloadedLegacyStore.academicSettings.find((s) => s.id === legacySettingIdValid)!;
+assert.strictEqual(migratedValidSetting.level, 'SD', 'Level preserved as SD');
+assert.strictEqual(migratedValidSetting.grade, 'Kelas 4', 'Grade preserved as Kelas 4');
+assert.strictEqual(migratedValidSetting.phase, 'Fase B', 'Phase derived as Fase B during migration for valid level + grade');
+console.log('✓ TEST B PASSED');
+
 // TEST 12: Delete Profile and Return to Zero-Profile
 console.log('\n[TEST 12] Deleting profiles and verifying clean return to 0-profile state...');
 deleteProfile(invalidSchoolProfile.id);
