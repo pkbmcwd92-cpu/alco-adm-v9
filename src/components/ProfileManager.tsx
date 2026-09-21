@@ -57,9 +57,8 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
   const activeProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
   const activeSchool =
     propsActiveSchool ||
-    schools.find((s) => s.id === activeProfile?.schoolId) ||
-    schools[0] || {
-      id: 'sch-1',
+    schools.find((s) => s.id === activeProfile?.schoolId) || {
+      id: '',
       name: '',
       npsn: '',
       address: '',
@@ -85,7 +84,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
       status: 'PNS',
       defaultSubject: 'Bahasa Indonesia',
       defaultLevel: 'SD',
-      schoolId: activeSchool?.id || schools[0]?.id || '',
+      schoolId: activeSchool?.id || '',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -115,7 +114,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
           status: 'PNS',
           defaultSubject: 'Bahasa Indonesia',
           defaultLevel: 'SD',
-          schoolId: activeSchool?.id || schools[0]?.id || '',
+          schoolId: activeSchool?.id || '',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
@@ -265,7 +264,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
       status: 'PNS',
       defaultSubject: 'Bahasa Indonesia',
       defaultLevel: 'SD',
-      schoolId: activeSchool?.id || schools[0]?.id || '',
+      schoolId: activeSchool?.id || '',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

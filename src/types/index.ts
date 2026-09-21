@@ -112,8 +112,8 @@ export interface AcademicSetting {
   curriculum: string; // e.g. "Kurikulum Merdeka" or "Kurikulum 2013"
   curriculumType?: CurriculumType;
   academicYear: string; // e.g. "2025/2026"
-  semester: '1 (Ganjil)' | '2 (Genap)';
-  level: 'SD' | 'SMP' | 'SMA' | 'SMK';
+  semester?: '1 (Ganjil)' | '2 (Genap)' | '';
+  level?: 'SD' | 'SMP' | 'SMA' | 'SMK' | '';
   grade: string; // e.g. "Kelas 4"
   phase: string; // e.g. "Fase B" (derived from grade)
   subject: string; // e.g. "Bahasa Indonesia"
@@ -1398,7 +1398,7 @@ export interface AppDocumentRecord {
 export interface ProfileWorkspaceData {
   status?: 'RESOLVED' | 'NO_PROFILE';
   profile?: TeacherProfile;
-  school: SchoolData;
+  school?: SchoolData;
   workspace?: AdministrationWorkspace;
   academicSetting?: AcademicSetting;
   context?: ActiveContext;

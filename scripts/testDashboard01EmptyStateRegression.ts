@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import fs from 'node:fs';
 import {
   getInitialState,
   loadAppStorage,
@@ -7,9 +8,11 @@ import {
   deleteProfile,
   createSchool,
   createWorkspace,
+  duplicateWorkspace,
+  saveK13KKM,
   generateWorkspaceName,
 } from '../src/services/storage';
-import { TeacherProfile, SchoolData } from '../src/types';
+import { TeacherProfile, SchoolData, K13KKM } from '../src/types';
 
 console.log('=== TEST SUITE: Dashboard 01 — Zero Profile & Unresolved Workspace Creation Regression ===');
 
@@ -35,6 +38,7 @@ localStorage.clear();
 console.log('\n[TEST 1] Verifying getInitialState returns clean empty collections...');
 const initial = getInitialState();
 assert.strictEqual(initial.profiles.length, 0, 'profiles must be empty array');
+assert.strictEqual(initial.schools.length, 0, 'schools must be empty array');
 assert.strictEqual(initial.workspaces.length, 0, 'workspaces must be empty array');
 assert.strictEqual(initial.academicSettings.length, 0, 'academicSettings must be empty array');
 assert.strictEqual(initial.cps.length, 0, 'cps must be empty array');
@@ -55,6 +59,7 @@ assert.ok(emptyWs, 'must return ProfileWorkspaceData object');
 assert.strictEqual(emptyWs.status, 'NO_PROFILE', 'status must be NO_PROFILE');
 assert.strictEqual(emptyWs.profile, undefined, 'profile must be undefined');
 assert.strictEqual(emptyWs.workspace, undefined, 'workspace must be undefined');
+assert.strictEqual(emptyWs.school, undefined, 'school must be undefined');
 assert.strictEqual(emptyWs.academicSetting, undefined, 'academicSetting must be undefined');
 assert.strictEqual(emptyWs.context, undefined, 'context must be undefined');
 assert.strictEqual(emptyWs.cp, undefined, 'cp must be undefined');
@@ -174,8 +179,120 @@ assert.strictEqual(validSetting.academicYear, '2025/2026', 'academicYear correct
 assert.strictEqual(validSetting.totalHoursPerWeek, 5, 'totalHoursPerWeek correctly set');
 console.log('✓ TEST 5 PASSED');
 
-// TEST 6: generateWorkspaceName Presentational Placeholders
-console.log('\n[TEST 6] Verifying generateWorkspaceName display placeholders...');
+// TEST 6: K13 creation must not fabricate KKM defaults
+console.log('\n[TEST 6] Verifying K13 workspace creation and read do not fabricate KKM...');
+const k13Ws = createWorkspace({
+  profileId: profile.id,
+  setting: {
+    level: 'SD',
+    grade: 'Kelas 4',
+    subject: 'Matematika',
+    curriculum: 'Kurikulum 2013',
+    academicYear: '2025/2026',
+    semester: '1 (Ganjil)',
+  },
+});
+const stateAfterK13Create = loadAppStorage();
+const k13Setting = stateAfterK13Create.academicSettings.find((s) => s.id === k13Ws.academicSettingId)!;
+assert.strictEqual(k13Setting.curriculumType, 'K13', 'Explicit K13 resolves correctly');
+assert.strictEqual((stateAfterK13Create.k13KKMs || []).some((k) => k.academicSettingId === k13Setting.id), false, 'K13 create must not create default KKM');
+const beforeK13Read = JSON.stringify(loadAppStorage());
+const k13Read = getProfileWorkspace(profile.id, k13Ws.id);
+const afterK13Read = JSON.stringify(loadAppStorage());
+assert.strictEqual(k13Read.k13KKM, undefined, 'K13 read with no KKM remains unresolved');
+assert.strictEqual(beforeK13Read, afterK13Read, 'K13 read must not mutate storage or fabricate KKM/KD');
+console.log('✓ TEST 6 PASSED');
+
+// TEST 7: Unknown curriculum remains unresolved and creates no curriculum artifacts
+console.log('\n[TEST 7] Verifying unknown curriculum stays unresolved...');
+const unknownWs = createWorkspace({
+  profileId: profile.id,
+  setting: {
+    level: 'SD',
+    grade: 'Kelas 4',
+    subject: 'IPAS',
+    curriculum: 'Kurikulum Eksperimental Sekolah',
+  },
+});
+const stateAfterUnknown = loadAppStorage();
+const unknownSetting = stateAfterUnknown.academicSettings.find((s) => s.id === unknownWs.academicSettingId)!;
+assert.strictEqual(unknownSetting.curriculumType, undefined, 'Unknown curriculum must not resolve to Merdeka');
+assert.strictEqual(stateAfterUnknown.cps.some((c) => c.academicSettingId === unknownSetting.id), false, 'Unknown curriculum must not create CP');
+assert.strictEqual(stateAfterUnknown.tps.some((t) => t.academicSettingId === unknownSetting.id), false, 'Unknown curriculum must not create TP');
+assert.strictEqual(stateAfterUnknown.atps.some((a) => a.academicSettingId === unknownSetting.id), false, 'Unknown curriculum must not create ATP');
+assert.strictEqual((stateAfterUnknown.k13Analyses || []).some((k) => k.academicSettingId === unknownSetting.id), false, 'Unknown curriculum must not create K13 structures');
+console.log('✓ TEST 7 PASSED');
+
+// TEST 8: K13 duplication clones legitimate KKM only when source has it
+console.log('\n[TEST 8] Verifying K13 duplicate preserves absent vs legitimate KKM...');
+const k13CloneNoKkm = duplicateWorkspace(k13Ws.id, 'Kelas 5', 'Matematika');
+assert.ok(k13CloneNoKkm, 'K13 clone without source KKM created');
+let stateAfterK13Clone = loadAppStorage();
+assert.strictEqual((stateAfterK13Clone.k13KKMs || []).some((k) => k.academicSettingId === k13CloneNoKkm!.academicSettingId), false, 'Absent source KKM remains absent in clone');
+
+const legitimateKKM: K13KKM = {
+  id: `kkm-${k13Setting.id}`,
+  academicSettingId: k13Setting.id,
+  kkmMataPelajaran: 82,
+  predikatA: 92,
+  predikatB: 84,
+  predikatC: 76,
+  items: [
+    {
+      id: 'kkm-real-1',
+      kd: 'KD hasil input guru',
+      indikator: 'Indikator hasil input guru',
+      kompleksitas: 80,
+      dayaDukung: 82,
+      intake: 84,
+      kkmIndikator: 82,
+    },
+  ],
+  updatedAt: new Date().toISOString(),
+};
+saveK13KKM(legitimateKKM);
+const k13CloneWithKkm = duplicateWorkspace(k13Ws.id, 'Kelas 6', 'Matematika');
+assert.ok(k13CloneWithKkm, 'K13 clone with source KKM created');
+stateAfterK13Clone = loadAppStorage();
+const clonedKKM = (stateAfterK13Clone.k13KKMs || []).find((k) => k.academicSettingId === k13CloneWithKkm!.academicSettingId);
+assert.ok(clonedKKM, 'Legitimate source KKM cloned');
+assert.strictEqual(clonedKKM!.kkmMataPelajaran, 82, 'Legitimate KKM value preserved');
+assert.strictEqual(clonedKKM!.items.length, 1, 'Legitimate KKM item cloned');
+console.log('✓ TEST 8 PASSED');
+
+// TEST 9: Invalid school relationship remains unresolved
+console.log('\n[TEST 9] Verifying invalid profile.schoolId does not bind to unrelated school...');
+const invalidSchoolProfile: TeacherProfile = {
+  id: 'prof-invalid-school',
+  name: 'Guru Tanpa Sekolah Valid',
+  nip: '',
+  status: 'PNS',
+  defaultSubject: '',
+  defaultLevel: 'SD',
+  schoolId: 'missing-school-id',
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+saveProfile(invalidSchoolProfile);
+const invalidSchoolState = loadAppStorage();
+const savedInvalidSchoolProfile = invalidSchoolState.profiles.find((p) => p.id === invalidSchoolProfile.id)!;
+assert.strictEqual(savedInvalidSchoolProfile.schoolId, undefined, 'Invalid schoolId is cleared instead of rebound to another school');
+const invalidSchoolWs = getProfileWorkspace(invalidSchoolProfile.id, '');
+assert.strictEqual(invalidSchoolWs.school, undefined, 'Invalid school relationship remains unresolved');
+console.log('✓ TEST 9 PASSED');
+
+// TEST 10: New workspace UI source must not hardcode canonical academic defaults
+console.log('\n[TEST 10] Verifying new-workspace UI source has no implicit canonical defaults...');
+const appSource = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+assert.ok(!appSource.includes("useState('Kelas 1')"), 'New workspace grade must not initialize to Kelas 1');
+assert.ok(!appSource.includes("useState('Pendidikan Jasmani, Olahraga, dan Kesehatan (PJOK)')"), 'New workspace subject must not initialize to PJOK');
+assert.ok(!appSource.includes("useState<'1 (Ganjil)' | '2 (Genap)'>('1 (Ganjil)')"), 'New workspace semester must not initialize to semester 1');
+assert.ok(!appSource.includes("useState('2026/2027')"), 'New workspace year must not initialize to 2026/2027');
+assert.ok(!appSource.includes('<option value="2026/2027">2026/2027</option>'), 'New workspace year must not use hardcoded year options');
+console.log('✓ TEST 10 PASSED');
+
+// TEST 11: generateWorkspaceName Presentational Placeholders
+console.log('\n[TEST 11] Verifying generateWorkspaceName display placeholders...');
 const unresolvedName = generateWorkspaceName({
   subject: '',
   grade: '',
@@ -184,10 +301,11 @@ const unresolvedName = generateWorkspaceName({
 });
 assert.strictEqual(unresolvedName, 'Mata Pelajaran — Kelas - — Sem - — Tahun Ajaran -');
 assert.ok(!unresolvedName.includes('2026/2027'), 'Should not contain 2026/2027 fallback');
-console.log('✓ TEST 6 PASSED');
+console.log('✓ TEST 11 PASSED');
 
-// TEST 7: Delete Profile and Return to Zero-Profile
-console.log('\n[TEST 7] Deleting profile and verifying clean return to 0-profile state...');
+// TEST 12: Delete Profile and Return to Zero-Profile
+console.log('\n[TEST 12] Deleting profiles and verifying clean return to 0-profile state...');
+deleteProfile(invalidSchoolProfile.id);
 deleteProfile(profile.id);
 const finalState = loadAppStorage();
 assert.strictEqual(finalState.profiles.length, 0, 'profiles count is 0');
@@ -196,6 +314,6 @@ assert.strictEqual(finalState.academicSettings.length, 0, 'academicSettings coun
 
 const finalEmptyWs = getProfileWorkspace('', '');
 assert.strictEqual(finalEmptyWs.status, 'NO_PROFILE', 'Returns NO_PROFILE status');
-console.log('✓ TEST 7 PASSED');
+console.log('✓ TEST 12 PASSED');
 
 console.log('\n=== ALL DASHBOARD 01 WORKSPACE REGRESSION TESTS PASSED ===\n');

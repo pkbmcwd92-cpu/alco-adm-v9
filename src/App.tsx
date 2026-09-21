@@ -66,6 +66,21 @@ import { isK13 } from './services/curriculumRouter';
 import { Plus, Copy, Trash2, X, FolderPlus } from 'lucide-react';
 import { GRADE_PHASE_MAP, SUBJECT_OPTIONS } from './data/curriculumDefaults';
 
+const EMPTY_SCHOOL_VIEW: SchoolData = {
+  id: '',
+  name: '',
+  npsn: '',
+  address: '',
+  village: '',
+  district: '',
+  regency: '',
+  province: '',
+  principalName: '',
+  principalNip: '',
+  createdAt: '',
+  updatedAt: '',
+};
+
 export function App() {
   const [dataStore, setDataStore] = useState<AppDataStore>(getAppData());
   const [currentStep, setCurrentStep] = useState<WorkflowStepId>('profile');
@@ -73,10 +88,10 @@ export function App() {
   const [isNewWorkspaceModalOpen, setIsNewWorkspaceModalOpen] = useState(false);
 
   // New Workspace form state
-  const [newWsGrade, setNewWsGrade] = useState('Kelas 1');
-  const [newWsSubject, setNewWsSubject] = useState('Pendidikan Jasmani, Olahraga, dan Kesehatan (PJOK)');
-  const [newWsSemester, setNewWsSemester] = useState<'1 (Ganjil)' | '2 (Genap)'>('1 (Ganjil)');
-  const [newWsYear, setNewWsYear] = useState('2026/2027');
+  const [newWsGrade, setNewWsGrade] = useState('');
+  const [newWsSubject, setNewWsSubject] = useState('');
+  const [newWsSemester, setNewWsSemester] = useState<'1 (Ganjil)' | '2 (Genap)' | ''>('');
+  const [newWsYear, setNewWsYear] = useState('');
 
   // Reload data from storage
   const refreshData = useCallback(() => {
@@ -121,6 +136,22 @@ export function App() {
   const currentWorkspacesList = allWorkspacesForProfile && allWorkspacesForProfile.length > 0
     ? allWorkspacesForProfile
     : allWorkspaces;
+  const activeSchoolForView = activeSchool || EMPTY_SCHOOL_VIEW;
+  const newWorkspaceLevel = activeProfile?.defaultLevel || '';
+  const availableGrades = newWorkspaceLevel && GRADE_PHASE_MAP[newWorkspaceLevel]
+    ? GRADE_PHASE_MAP[newWorkspaceLevel]
+    : [];
+  const availableSubjects = newWorkspaceLevel && SUBJECT_OPTIONS[newWorkspaceLevel]
+    ? SUBJECT_OPTIONS[newWorkspaceLevel]
+    : [];
+
+  const openNewWorkspaceModal = () => {
+    setNewWsSubject(activeProfile?.defaultSubject || '');
+    setNewWsGrade('');
+    setNewWsSemester(activeAcademicSetting?.semester || '');
+    setNewWsYear(activeAcademicSetting?.academicYear || '');
+    setIsNewWorkspaceModalOpen(true);
+  };
 
   // Handlers for Profile
   const handleSelectProfile = (id: string) => {
@@ -171,16 +202,20 @@ export function App() {
       alert('Mata pelajaran tidak boleh kosong.');
       return;
     }
+    if (newWsYear.trim() && !/^\d{4}\/\d{4}$/.test(newWsYear.trim())) {
+      alert('Tahun ajaran gunakan format 2026/2027 atau kosongkan jika belum ditentukan.');
+      return;
+    }
 
     createWorkspace({
       profileId: activeProfile?.id || '',
       schoolId: activeSchool?.id || '',
       setting: {
-        level: activeProfile?.defaultLevel || 'SD',
+        level: activeProfile?.defaultLevel || '',
         grade: newWsGrade,
         subject: newWsSubject.trim(),
         semester: newWsSemester,
-        academicYear: newWsYear,
+        academicYear: newWsYear.trim(),
       },
     });
 
@@ -301,21 +336,18 @@ export function App() {
     refreshData();
   };
 
-  const availableGrades = GRADE_PHASE_MAP[activeProfile?.defaultLevel || 'SD'] || [];
-  const availableSubjects = SUBJECT_OPTIONS[activeProfile?.defaultLevel || 'SD'] || [];
-
   return (
     <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">
       {/* Top Application Header */}
       <Header
         activeProfile={activeProfile}
-        school={activeSchool}
+        school={activeSchoolForView}
         profiles={dataStore.profiles || []}
         workspaces={currentWorkspacesList || []}
         activeWorkspaceId={activeWorkspace?.id || dataStore.activeWorkspaceId || ''}
         onSelectProfile={handleSelectProfile}
         onSelectWorkspace={handleSelectWorkspace}
-        onCreateWorkspaceClick={() => setIsNewWorkspaceModalOpen(true)}
+        onCreateWorkspaceClick={openNewWorkspaceModal}
         onOpenBackupModal={() => setIsBackupModalOpen(true)}
       />
 
@@ -428,7 +460,7 @@ export function App() {
               k13KKM={k13KKM}
               academicSetting={activeAcademicSetting}
               profile={activeProfile}
-              school={activeSchool}
+              school={activeSchoolForView}
               onSaveAnalysis={handleSaveK13Analysis}
               onSaveKKM={handleSaveK13KKM}
               onNextStep={() => setCurrentStep('k13-indikator')}
@@ -443,7 +475,7 @@ export function App() {
               k13KKM={k13KKM}
               academicSetting={activeAcademicSetting}
               profile={activeProfile}
-              school={activeSchool}
+              school={activeSchoolForView}
               onSaveAnalysis={handleSaveK13Analysis}
               onSaveKKM={handleSaveK13KKM}
               onNextStep={() => setCurrentStep('k13-tujuan')}
@@ -458,7 +490,7 @@ export function App() {
               k13KKM={k13KKM}
               academicSetting={activeAcademicSetting}
               profile={activeProfile}
-              school={activeSchool}
+              school={activeSchoolForView}
               onSaveAnalysis={handleSaveK13Analysis}
               onSaveKKM={handleSaveK13KKM}
               onNextStep={() => setCurrentStep('admin')}
@@ -473,7 +505,7 @@ export function App() {
               k13KKM={k13KKM}
               academicSetting={activeAcademicSetting}
               profile={activeProfile}
-              school={activeSchool}
+              school={activeSchoolForView}
               onSaveAnalysis={handleSaveK13Analysis}
               onSaveKKM={handleSaveK13KKM}
               onNextStep={() => setCurrentStep('admin')}
@@ -485,7 +517,7 @@ export function App() {
           {currentStep === 'admin' && (
             <AdministrationHub
               profile={activeProfile}
-              school={activeSchool}
+              school={activeSchoolForView}
               workspace={activeWorkspace}
               academicSetting={activeAcademicSetting}
               cp={activeCP}
@@ -559,7 +591,7 @@ export function App() {
                 <div>
                   <h3 className="text-base font-bold text-slate-900">Buat Administrasi / Kelas Baru</h3>
                   <p className="text-xs text-slate-500">
-                    Guru: <strong>{activeProfile.name}</strong> • Sekolah: <strong>{activeSchool.name}</strong>
+                    Guru: <strong>{activeProfile?.name || 'Belum dipilih'}</strong> • Sekolah: <strong>{activeSchool?.name || 'Belum dipilih'}</strong>
                   </p>
                 </div>
               </div>
@@ -602,6 +634,7 @@ export function App() {
                     onChange={(e) => setNewWsGrade(e.target.value)}
                     className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 bg-white cursor-pointer"
                   >
+                    <option value="">Belum ditentukan</option>
                     {availableGrades.map((g) => (
                       <option key={g.grade} value={g.grade}>
                         {g.grade} ({g.phase})
@@ -615,9 +648,10 @@ export function App() {
                   </label>
                   <select
                     value={newWsSemester}
-                    onChange={(e) => setNewWsSemester(e.target.value as '1 (Ganjil)' | '2 (Genap)')}
+                    onChange={(e) => setNewWsSemester(e.target.value as '1 (Ganjil)' | '2 (Genap)' | '')}
                     className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 bg-white cursor-pointer"
                   >
+                    <option value="">Belum ditentukan</option>
                     <option value="1 (Ganjil)">1 (Ganjil)</option>
                     <option value="2 (Genap)">2 (Genap)</option>
                   </select>
@@ -628,21 +662,21 @@ export function App() {
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
                   Tahun Ajaran
                 </label>
-                <select
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="\d{4}/\d{4}"
+                  placeholder="Contoh: 2026/2027"
                   value={newWsYear}
                   onChange={(e) => setNewWsYear(e.target.value)}
                   className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 bg-white cursor-pointer"
-                >
-                  <option value="2026/2027">2026/2027</option>
-                  <option value="2025/2026">2025/2026</option>
-                  <option value="2024/2025">2024/2025</option>
-                </select>
+                />
               </div>
 
               <div className="bg-blue-50/70 p-3 rounded-xl border border-blue-200/60 text-xs text-blue-900 space-y-1">
                 <div className="font-semibold">Nama Workspace yang Dibuat:</div>
                 <div className="font-bold text-blue-950">
-                  {newWsSubject || 'Mapel'} — {newWsGrade} — {newWsSemester.startsWith('1') ? 'Sem 1' : 'Sem 2'} — {newWsYear}
+                  {newWsSubject || 'Mapel'} — {newWsGrade || 'Kelas -'} — {newWsSemester.startsWith('1') ? 'Sem 1' : newWsSemester.startsWith('2') ? 'Sem 2' : 'Sem -'} — {newWsYear || 'Tahun Ajaran -'}
                 </div>
                 <p className="text-[11px] text-blue-700 mt-0.5">
                   Setiap workspace memiliki CP, TP, ATP, dan dokumen mandiri tanpa tercampur dengan administrasi lainnya.

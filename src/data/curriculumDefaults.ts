@@ -8,6 +8,7 @@ import {
   ATPData,
   CPSource,
 } from '../types';
+import { getCurriculumTypeFromSetting } from '../services/curriculumRouter';
 
 export const CURRICULA = [
   'Kurikulum Merdeka',
@@ -58,7 +59,8 @@ export const GRADE_PHASE_MAP: Record<string, { grade: string; phase: string; lev
  */
 export function getPhaseFromGrade(level: string = 'SD', grade: string = ''): string {
   if (!grade || !grade.trim()) return '';
-  const normLevel = (level.toUpperCase() in GRADE_PHASE_MAP ? level.toUpperCase() : 'SD') as keyof typeof GRADE_PHASE_MAP;
+  const normLevel = (level.toUpperCase() in GRADE_PHASE_MAP ? level.toUpperCase() : '') as keyof typeof GRADE_PHASE_MAP | '';
+  if (!normLevel) return '';
   const grades = GRADE_PHASE_MAP[normLevel] || GRADE_PHASE_MAP.SD;
   
   // Direct match
@@ -91,8 +93,8 @@ export function buildActiveContext(
   school: SchoolData,
   setting: AcademicSetting
 ): ActiveContext {
-  const derivedPhase = setting.phase || getPhaseFromGrade(setting.level || profile?.defaultLevel || 'SD', setting.grade || '');
-  const curType = setting.curriculumType || (setting.curriculum === 'Kurikulum 2013' ? 'K13' : (setting.curriculum ? 'KURIKULUM_MERDEKA' : undefined));
+  const derivedPhase = setting.phase || getPhaseFromGrade(setting.level || profile?.defaultLevel || '', setting.grade || '');
+  const curType = getCurriculumTypeFromSetting(setting);
   return {
     profileId: profile?.id || '',
     schoolId: school?.id || profile?.schoolId || '',
