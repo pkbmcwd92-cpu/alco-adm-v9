@@ -10,6 +10,7 @@ import {
   K13Analysis,
   CalendarSourceType,
   CalendarWorkflowStatus,
+  CalendarResolutionStatus,
 } from '../../types';
 import {
   calculateEffectiveDays,
@@ -94,16 +95,19 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
   const [workflowStatus, setWorkflowStatus] = useState<CalendarWorkflowStatus>(
     calendar?.workflowStatus || (calendar?.startDate && calendar?.endDate ? 'AUTO_RESOLVED' : 'UNRESOLVED')
   );
+  const [resolutionStatus, setResolutionStatus] = useState<CalendarResolutionStatus>(
+    calendar?.resolutionStatus || (calendar?.startDate && calendar?.endDate ? 'RESOLVED' : 'UNRESOLVED')
+  );
 
   // Region & Academic Settings for Auto-Resolution
   const [selectedProvince, setSelectedProvince] = useState<string>(
-    calendar?.sourceRegion || school.province || 'Jawa Barat'
+    calendar?.sourceRegion || school.province || ''
   );
   const [academicYear, setAcademicYear] = useState<string>(
-    calendar?.academicYear || academicSetting.academicYear || '2026/2027'
+    calendar?.academicYear || academicSetting.academicYear || ''
   );
   const [semester, setSemester] = useState<'1' | '2' | null>(
-    resolveSemester(calendar?.semester, academicSetting.semester) || '1'
+    resolveSemester(calendar?.semester, academicSetting.semester)
   );
 
   // Calendar dates & structure
@@ -159,7 +163,12 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
 
   // Auto-resolve on initialization if calendar is empty or unconfigured
   useEffect(() => {
-    if ((!calendar || !calendar.startDate || !calendar.endDate) && school.province && academicSetting.academicYear) {
+    if (
+      (!calendar || !calendar.startDate || !calendar.endDate) &&
+      school.province &&
+      academicSetting.academicYear &&
+      academicSetting.semester
+    ) {
       handleAutoResolve(false);
     }
   }, [school.province, academicSetting.academicYear, academicSetting.semester]);
@@ -272,7 +281,7 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
     const res = resolveOfficialCalendar({
       province: selectedProvince,
       academicYear,
-      semester: semester || '1',
+      semester: semester || undefined,
       academicSettingId: academicSetting.id,
       calendarId: calendar?.id,
       schoolDaysPerWeek,
@@ -291,6 +300,7 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
       setDays(res.days);
       setIsOverridden(false);
       setWorkflowStatus('AUTO_RESOLVED');
+      setResolutionStatus('RESOLVED');
       setResolutionMessage(res.diagnostic);
 
       onSaveCalendar(res.calendar, res.days);
@@ -301,6 +311,7 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
       }
     } else {
       setWorkflowStatus('UNRESOLVED');
+      setResolutionStatus(res.resolutionStatus);
       setResolutionMessage(res.diagnostic);
       if (showNotification) {
         setSaveNotification(res.diagnostic);

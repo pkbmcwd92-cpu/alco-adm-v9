@@ -26,6 +26,7 @@ interface CalendarWorkflowHeaderProps {
   reviewStatus?: 'UNREVIEWED' | 'REVIEWED' | 'CONFIRMED';
   provenance?: CalendarProvenance;
   nationalProvenance?: CalendarProvenance;
+  nationalProvenances?: CalendarProvenance[];
   sourceName?: string;
   sourceAuthority?: string;
   sourceDocumentNumber?: string;
@@ -54,6 +55,7 @@ export const CalendarWorkflowHeader: React.FC<CalendarWorkflowHeaderProps> = ({
   reviewStatus = 'UNREVIEWED',
   provenance,
   nationalProvenance,
+  nationalProvenances,
   sourceName,
   sourceAuthority,
   sourceDocumentNumber,
@@ -268,9 +270,29 @@ export const CalendarWorkflowHeader: React.FC<CalendarWorkflowHeaderProps> = ({
                     <ShieldCheck className="w-4 h-4 text-emerald-600" />
                     <span>Overlay Nasional: Hari Libur &amp; Cuti Bersama</span>
                   </div>
-                  <div className="text-xs text-slate-800 font-semibold mt-1">
-                    {nationalProvenance?.documentNumber || 'SKB 3 Menteri (Menag, Menaker, MenPANRB)'}
-                  </div>
+                  {nationalProvenances && nationalProvenances.length > 1 ? (
+                    <div className="mt-1 space-y-1">
+                      {nationalProvenances.map((np, idx) => (
+                        <div key={idx} className="text-xs text-slate-800 font-semibold flex items-center justify-between gap-1">
+                          <span>{np.documentNumber || np.sourceName}</span>
+                          {np.sourceUrl && (
+                            <a
+                              href={np.sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-emerald-700 hover:text-emerald-900 font-normal hover:underline inline-flex items-center gap-0.5"
+                            >
+                              JDIH <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-800 font-semibold mt-1">
+                      {nationalProvenance?.documentNumber || 'SKB 3 Menteri (Menag, Menaker, MenPANRB)'}
+                    </div>
+                  )}
                   <div className="text-[11px] text-slate-600 mt-0.5">
                     Otoritas: <strong>Pemerintah Republik Indonesia (SKB 3 Menteri)</strong>
                   </div>
@@ -281,15 +303,17 @@ export const CalendarWorkflowHeader: React.FC<CalendarWorkflowHeaderProps> = ({
 
                 <div className="flex items-center justify-between text-[11px] pt-2 border-t border-emerald-100/80 text-emerald-950">
                   <span className="font-medium text-emerald-800">Tahun Ajaran {academicYear || '-'}</span>
-                  <a
-                    href={nationalProvenance?.sourceUrl || 'https://jdih.menpan.go.id'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-900 font-semibold hover:underline"
-                  >
-                    <span>Portal JDIH SKB</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
+                  {(!nationalProvenances || nationalProvenances.length <= 1) && (
+                    <a
+                      href={nationalProvenance?.sourceUrl || 'https://jdih.kemenag.go.id'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-900 font-semibold hover:underline"
+                    >
+                      <span>Portal JDIH SKB</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
                 </div>
               </div>
             </div>

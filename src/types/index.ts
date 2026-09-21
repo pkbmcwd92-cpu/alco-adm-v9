@@ -396,7 +396,10 @@ export type CalendarResolutionStatus =
   | 'RESOLVED'
   | 'MANUALLY_OVERRIDDEN'
   | 'REGION_REQUIRED'
-  | 'ACADEMIC_YEAR_REQUIRED';
+  | 'ACADEMIC_YEAR_REQUIRED'
+  | 'SEMESTER_REQUIRED'
+  | 'INVALID_SEMESTER'
+  | 'UNVERIFIED_SOURCE';
 
 export type CalendarLayerType = 'REGIONAL_BASE' | 'NATIONAL_OVERLAY' | 'SCHOOL_OVERRIDE' | 'MANUAL';
 
@@ -467,6 +470,7 @@ export interface AcademicCalendar {
   overrides?: SchoolCalendarOverride[];
   provenance?: CalendarProvenance;
   nationalProvenance?: CalendarProvenance;
+  nationalProvenances?: CalendarProvenance[];
   nationalHolidayOverlayName?: string;
   nationalHolidayOverlayUrl?: string;
   nationalHolidayCount?: number;
@@ -502,7 +506,9 @@ export interface CalendarDay {
   sourceName?: string;
   sourceLayer?: CalendarLayerType;
   sourceAuthority?: string;
+  sourceDocumentNumber?: string;
   sourceUrl?: string;
+  sourceProvenances?: CalendarProvenance[];
   isOverridden?: boolean;
   overrideReason?: string;
   originalStatus?: CalendarDayStatus;
