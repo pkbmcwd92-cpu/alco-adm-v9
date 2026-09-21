@@ -104,6 +104,22 @@ function getDateRangeArray(startDateStr: string, endDateStr: string): string[] {
 }
 
 /**
+ * Helper untuk memastikan tidak ada duplikasi provenance pada CalendarDay atau AcademicCalendar
+ */
+export function dedupProvenances(provenances: CalendarProvenance[]): CalendarProvenance[] {
+  const seen = new Set<string>();
+  const result: CalendarProvenance[] = [];
+  for (const p of provenances) {
+    const key = `${p.sourceType}|${p.documentNumber || p.sourceName || ''}|${p.sourceUrl || ''}|${p.region || ''}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(p);
+    }
+  }
+  return result;
+}
+
+/**
  * RESOLUSI OTOMATIS KALENDER PENDIDIKAN
  * Alur: Wilayah Sekolah + Tahun Ajaran + Semester -> Kaldik Provinsi Terverifikasi -> Overlay Libur Nasional SKB 3 Menteri
  * Menjamin prinsip "NO DATA > FAKE DATA" (fail-closed jika tidak ada sumber resmi terverifikasi).
@@ -259,18 +275,36 @@ export function resolveOfficialCalendar(params: {
   const nationalHolidaysApplied: NationalHolidayRecord[] = [];
   const yearsInvolved = new Set<number>();
   let nationalHolidayCount = 0;
+  let hasUnverifiedNationalHolidayInDateRange = false;
 
   for (const holiday of OFFICIAL_NATIONAL_HOLIDAYS) {
     if (holiday.date >= startDate && holiday.date <= endDate) {
+      const eventYear = holiday.year || parseInt(holiday.date.slice(0, 4), 10);
+      const natSource = OFFICIAL_NATIONAL_HOLIDAY_SOURCES[eventYear];
+
+      // Fail-closed: Verifikasi exact legal source
+      const isNatSourceVerified =
+        natSource &&
+        natSource.verificationState === 'VERIFIED' &&
+        Boolean(natSource.documentNumber) &&
+        Boolean(natSource.documentTitle) &&
+        Boolean(natSource.sourceUrl) &&
+        Boolean(natSource.verifiedAt);
+
+      if (!isNatSourceVerified) {
+        hasUnverifiedNationalHolidayInDateRange = true;
+        // Tidak membuat provenance sintetik jika sumber tidak tersedia atau tidak terverifikasi
+        continue;
+      }
+
       nationalHolidaysApplied.push(holiday);
       nationalHolidayCount++;
-      yearsInvolved.add(holiday.year);
+      yearsInvolved.add(eventYear);
 
-      const natSource = OFFICIAL_NATIONAL_HOLIDAY_SOURCES[holiday.year];
-      const holidayDocNumber = natSource?.documentNumber || holiday.documentNumber || holiday.regulationTitle || 'SKB 3 Menteri';
-      const holidayDocTitle = natSource?.documentTitle || holiday.regulationTitle || 'Penetapan Libur Nasional dan Cuti Bersama';
-      const holidayAuthority = natSource?.authority || holiday.authority || 'Kemenag, Kemenaker, KemenPANRB RI';
-      const holidayUrl = natSource?.sourceUrl || holiday.sourceUrl || 'https://jdih.kemenag.go.id';
+      const holidayDocNumber = natSource.documentNumber;
+      const holidayDocTitle = natSource.documentTitle;
+      const holidayAuthority = natSource.authority;
+      const holidayUrl = natSource.sourceUrl;
 
       const holidayProvenance: CalendarProvenance = {
         sourceType: 'NATIONAL_HOLIDAY_OVERLAY',
@@ -281,20 +315,21 @@ export function resolveOfficialCalendar(params: {
         academicYear: normYear,
         documentNumber: holidayDocNumber,
         documentTitle: holidayDocTitle,
+        publicationDate: natSource.publicationDate,
+        effectiveDate: natSource.signedDate || natSource.publicationDate,
         retrievedAt: nowIso,
-        checksumOrDate: natSource?.verifiedAt || holiday.verifiedAt,
+        checksumOrDate: natSource.verifiedAt,
       };
 
       const existing = daysMap.get(holiday.date);
 
-      // Overlay menggabungkan catatan dan menjaga riwayat provenance regional & nasional
+      // Overlay menggabungkan catatan dan menjaga riwayat provenance regional & nasional tanpa duplikasi
       const combinedNotes = existing
         ? `${holiday.name} [${holidayDocNumber}] • Agenda Daerah: ${existing.notes}`
         : `${holiday.name} (${holiday.type === 'CUTI_BERSAMA' ? 'Cuti Bersama' : 'Libur Nasional'})`;
 
-      const mergedProvenances = existing?.sourceProvenances
-        ? [...existing.sourceProvenances, holidayProvenance]
-        : [holidayProvenance];
+      const existingProvenances = existing?.sourceProvenances || [];
+      const mergedProvenances = dedupProvenances([...existingProvenances, holidayProvenance]);
 
       daysMap.set(holiday.date, {
         id: `day-nat-${holiday.date}`,
@@ -314,38 +349,29 @@ export function resolveOfficialCalendar(params: {
     }
   }
 
-  // Buat daftar provenance nasional untuk seluruh tahun yang terlibat
+  // Buat daftar provenance nasional untuk seluruh tahun yang terlibat (HANYA tahun yang terverifikasi dan diterapkan)
   const nationalProvenancesList: CalendarProvenance[] = Array.from(yearsInvolved)
     .sort((a, b) => a - b)
     .map((yr) => {
       const src = OFFICIAL_NATIONAL_HOLIDAY_SOURCES[yr];
       return {
         sourceType: 'NATIONAL_HOLIDAY_OVERLAY',
-        sourceName: src?.documentTitle || `SKB 3 Menteri Libur Nasional & Cuti Bersama Tahun ${yr}`,
-        sourceAuthority: src?.authority || 'Kementerian Agama, Kementerian Ketenagakerjaan, Kementerian PANRB RI',
-        sourceUrl: src?.sourceUrl || 'https://jdih.kemenag.go.id',
+        sourceName: src.documentTitle,
+        sourceAuthority: src.authority,
+        sourceUrl: src.sourceUrl,
         region: 'Nasional',
         academicYear: normYear,
-        documentNumber: src?.documentNumber || `SKB 3 Menteri Tahun ${yr}`,
-        documentTitle: src?.documentTitle,
+        documentNumber: src.documentNumber,
+        documentTitle: src.documentTitle,
+        publicationDate: src.publicationDate,
+        effectiveDate: src.signedDate || src.publicationDate,
         retrievedAt: nowIso,
-        checksumOrDate: src?.verifiedAt,
+        checksumOrDate: src.verifiedAt,
       };
     });
 
   const primaryNatProvenance =
-    nationalProvenancesList.length > 0
-      ? nationalProvenancesList[0]
-      : {
-          sourceType: 'NATIONAL_HOLIDAY_OVERLAY' as CalendarSourceType,
-          sourceName: 'Keputusan Bersama Menag, Menaker, MenPANRB Penetapan Libur Nasional & Cuti Bersama',
-          sourceAuthority: 'Kemenag, Kemenaker, KemenPANRB RI',
-          sourceUrl: 'https://jdih.kemenag.go.id',
-          region: 'Nasional',
-          academicYear: normYear,
-          documentNumber: 'SKB 3 Menteri',
-          retrievedAt: nowIso,
-        };
+    nationalProvenancesList.length > 0 ? nationalProvenancesList[0] : undefined;
 
   const days: CalendarDay[] = Array.from(daysMap.values()).sort((a, b) =>
     a.date.localeCompare(b.date)
@@ -355,6 +381,10 @@ export function resolveOfficialCalendar(params: {
     params.schoolDaysPerWeek === 5 || params.schoolDaysPerWeek === 6
       ? params.schoolDaysPerWeek
       : semConfig.defaultSchoolDaysPerWeek || 5;
+
+  const resolutionStatus: CalendarResolutionStatus = hasUnverifiedNationalHolidayInDateRange
+    ? 'PARTIALLY_RESOLVED'
+    : 'RESOLVED';
 
   const calendar: AcademicCalendar = {
     id: calId,
@@ -371,19 +401,19 @@ export function resolveOfficialCalendar(params: {
     sourceUrl: matchedRegional.sourceUrl,
     sourceRegion: matchedRegional.province,
     workflowStatus: 'AUTO_RESOLVED',
-    resolutionStatus: 'RESOLVED',
+    resolutionStatus,
     reviewStatus: 'UNREVIEWED',
     retrievedAt: nowIso,
     verifiedAt: matchedRegional.verifiedAt,
     isOverridden: false,
     provenance: regionalProvenance,
     nationalProvenance: primaryNatProvenance,
-    nationalProvenances: nationalProvenancesList,
+    nationalProvenances: nationalProvenancesList.length > 0 ? nationalProvenancesList : undefined,
     nationalHolidayOverlayName:
       nationalProvenancesList.length > 0
         ? nationalProvenancesList.map((p) => p.documentNumber).join(' & ')
-        : 'SKB 3 Menteri Libur Nasional',
-    nationalHolidayOverlayUrl: primaryNatProvenance.sourceUrl,
+        : undefined,
+    nationalHolidayOverlayUrl: primaryNatProvenance?.sourceUrl,
     nationalHolidayCount,
     regionalEventCount,
     schoolEventCount: 0,
@@ -391,15 +421,21 @@ export function resolveOfficialCalendar(params: {
     updatedAt: nowIso,
   };
 
+  const diagnosticMsg = hasUnverifiedNationalHolidayInDateRange
+    ? `Kalender pendidikan daerah terverifikasi (${matchedRegional.documentNumber}), namun beberapa hari libur nasional pada rentang waktu ini dilewati karena sumber hukum belum terverifikasi.`
+    : nationalHolidayCount > 0
+    ? `Berhasil menyelesaikan Kalender Pendidikan dari ${matchedRegional.authority} (${matchedRegional.documentNumber}) dengan ${nationalHolidayCount} Libur Nasional SKB 3 Menteri.`
+    : `Berhasil menyelesaikan Kalender Pendidikan dari ${matchedRegional.authority} (${matchedRegional.documentNumber}).`;
+
   return {
     isResolved: true,
     workflowStatus: 'AUTO_RESOLVED',
-    resolutionStatus: 'RESOLVED',
+    resolutionStatus,
     calendar,
     days,
     matchedRegionalSource: matchedRegional,
     nationalHolidaysApplied,
-    diagnostic: `Berhasil menyelesaikan Kalender Pendidikan dari ${matchedRegional.authority} (${matchedRegional.documentNumber}) dengan ${nationalHolidayCount} Libur Nasional SKB 3 Menteri.`,
+    diagnostic: diagnosticMsg,
   };
 }
 
