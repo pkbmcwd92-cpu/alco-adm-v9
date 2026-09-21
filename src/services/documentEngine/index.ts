@@ -2,7 +2,7 @@ import JSZip from 'jszip';
 import saveAs from 'file-saver';
 import { DocumentType, DocumentGenerationContext, DocumentValidationResult, GeneratedDocumentResult, DocumentCatalogItem } from './types';
 import { DocumentSnapshot, AppDocumentRecord, LearningPlan } from '../../types';
-import { getCurriculumType } from '../curriculumRules';
+import { getCurriculumTypeFromSetting } from '../curriculumRouter';
 import { resolveEffectiveContext, createDocumentSnapshot } from './snapshot';
 import { generateAnalisisCpTp } from './generators/analisisCpTpGenerator';
 import { generateATP } from './generators/atpGenerator';
@@ -244,9 +244,15 @@ export function validateDocumentRequirements(
     missingFields.push('Tahun Pelajaran belum diisi');
   }
 
-  const curType = getCurriculumType(
-    context.academicSetting?.curriculumType || context.academicSetting?.curriculum
-  );
+  const curType = getCurriculumTypeFromSetting(context.academicSetting);
+  if (!curType) {
+    return {
+      isValid: false,
+      missingFields: ['Kurikulum belum ditentukan / tidak dikenali.'],
+      message: 'Dokumen belum dapat dibuat karena kurikulum belum ditentukan / tidak dikenali.',
+      targetStep: 'academic',
+    };
+  }
 
   // Curriculum isolation check for both modes:
   if (curType === 'K13') {

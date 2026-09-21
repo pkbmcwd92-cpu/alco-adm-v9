@@ -1464,6 +1464,7 @@ export function saveCP(cp: CPData): void {
 
 export function saveTP(tp: TPData): void {
   const current = loadAppStorage();
+  const oldTP = current.tps.find((t) => t.academicSettingId === tp.academicSettingId);
   const updatedTP = {
     ...tp,
     updatedAt: new Date().toISOString(),
@@ -1504,9 +1505,13 @@ export function saveTP(tp: TPData): void {
     });
   }
 
+  const oldTpIds = new Set((oldTP?.items || []).map((item) => item.id));
+  const newTpIds = new Set((updatedTP.items || []).map((item) => item.id));
+  const affectedTpIds = new Set<string>([...oldTpIds, ...newTpIds]);
+
   current.learningPlans = (current.learningPlans || []).map((plan) => {
     if (plan.academicSettingId !== tp.academicSettingId || plan.status !== 'SIAP') return plan;
-    const referenced = (plan.tpIds || []).some((id) => (tp.items || []).some((item) => item.id === id));
+    const referenced = (plan.tpIds || []).some((id) => affectedTpIds.has(id));
     if (!referenced) return plan;
     return {
       ...plan,
@@ -1522,6 +1527,7 @@ export function saveTP(tp: TPData): void {
 export function saveATP(atp: ATPData): void {
   const current = loadAppStorage();
   const tp = current.tps.find((t) => t.academicSettingId === atp.academicSettingId);
+  const oldATP = current.atps.find((a) => a.academicSettingId === atp.academicSettingId);
   const normalizedATP = normalizeATPReferences(atp, tp);
 
   const val = validateATPDataWorkflow(normalizedATP, tp);
@@ -1556,8 +1562,14 @@ export function saveATP(atp: ATPData): void {
     current.atps.push(updatedATP);
   }
 
-  const affectedAtpItemIds = new Set((updatedATP.items || []).map((item) => item.id));
-  const affectedTpIds = new Set((updatedATP.items || []).map((item) => item.tpId).filter(Boolean) as string[]);
+  const affectedAtpItemIds = new Set([
+    ...(oldATP?.items || []).map((item) => item.id),
+    ...(updatedATP.items || []).map((item) => item.id),
+  ]);
+  const affectedTpIds = new Set([
+    ...(oldATP?.items || []).map((item) => item.tpId).filter(Boolean) as string[],
+    ...(updatedATP.items || []).map((item) => item.tpId).filter(Boolean) as string[],
+  ]);
   current.learningPlans = (current.learningPlans || []).map((plan) => {
     if (plan.academicSettingId !== atp.academicSettingId || plan.status !== 'SIAP') return plan;
     const referencesAtp = (plan.atpItemIds || []).some((id) => affectedAtpItemIds.has(id));
@@ -1907,7 +1919,7 @@ export function saveLearningPlan(plan: LearningPlan): void {
   const updatedPlan: LearningPlan = {
     ...plan,
     objectives,
-    timeAllocationIds: jpResolution.timeAllocationIds || plan.timeAllocationIds,
+    timeAllocationIds: jpResolution.timeAllocationIds || [],
     updatedAt: new Date().toISOString(),
   };
   if (idx >= 0) {

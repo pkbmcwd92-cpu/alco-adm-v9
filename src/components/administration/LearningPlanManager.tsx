@@ -69,6 +69,11 @@ export interface LearningPlanScopeUnit {
   jp?: number | null;
 }
 
+function isAtpReadyForAIScope(atpData?: ATPData | null): boolean {
+  if (!atpData || !atpData.items || atpData.items.length === 0) return false;
+  return atpData.workflowStatus === 'SIAP' && !atpData.needsReview;
+}
+
 export function resolveAvailableScopes(
   tpData?: TPData | null,
   atpData?: ATPData | null
@@ -76,9 +81,9 @@ export function resolveAvailableScopes(
   const availableTps = tpData?.items || [];
   if (availableTps.length === 0) return [];
 
-  const availableAtps = (atpData?.items || []).filter(
-    (a) => a.tpId && availableTps.some((t) => t.id === a.tpId)
-  );
+  const availableAtps = isAtpReadyForAIScope(atpData)
+    ? (atpData?.items || []).filter((a) => a.tpId && availableTps.some((t) => t.id === a.tpId))
+    : [];
   const representedTpIds = new Set<string>();
   const atpScopes = availableAtps.map((atpItem, index) => {
       const linkedTp = availableTps.find((t) => t.id === atpItem.tpId)!;
@@ -188,6 +193,14 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
 
   // Create new manual empty plan
   const handleCreateNewManual = () => {
+    if (curriculumType === 'K13') {
+      showNotification('error', 'Penyusunan RPP K13 pada modul Perencanaan Pembelajaran ini belum didukung. Gunakan administrasi K13 yang tersedia sampai workflow K13 khusus disiapkan.');
+      return;
+    }
+    if (curriculumType !== 'KURIKULUM_MERDEKA') {
+      showNotification('error', 'Kurikulum belum terselesaikan. Rancangan manual tidak dibuat agar tidak diarahkan diam-diam ke Kurikulum Merdeka.');
+      return;
+    }
     const newPlan = createEmptyLearningPlan({
       academicSetting,
       curriculumType,
@@ -208,7 +221,7 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
   // Trigger AI Assisted Draft with strict canonical scope (0 / 1 / >1 rule)
   const handleCreateAIDraftClick = () => {
     if (curriculumType === 'K13') {
-      showNotification('error', 'Draf AI Modul Ajar/RPP K13 belum didukung pada workflow ini. Gunakan pengisian manual berbasis KD/IPK.');
+      showNotification('error', 'Penyusunan RPP K13 pada modul Perencanaan Pembelajaran ini belum didukung. Gunakan administrasi K13 yang tersedia sampai workflow K13 khusus disiapkan.');
       return;
     }
     if (curriculumType !== 'KURIKULUM_MERDEKA') {
@@ -225,6 +238,10 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
     }
     if (atp?.needsReview) {
       showNotification('error', `ATP perlu ditinjau sebelum AI draft: ${atp.reviewReason || 'status needsReview aktif'}.`);
+      return;
+    }
+    if (atp?.items?.length && !isAtpReadyForAIScope(atp)) {
+      showNotification('error', 'ATP belum siap untuk digunakan sebagai sumber Draf AI. Tinjau dan selesaikan ATP terlebih dahulu.');
       return;
     }
     const scopes = resolveAvailableScopes(tp, atp);

@@ -113,6 +113,18 @@ export interface LearningPlanJPResolution {
   issues?: string[];
 }
 
+function isTimeAllocationRelatedToPlan(allocation: TimeAllocation, plan: LearningPlan): boolean {
+  if (allocation.academicSettingId && allocation.academicSettingId !== plan.academicSettingId) return false;
+  const planAtpIds = new Set(plan.atpItemIds || []);
+  const planTpIds = new Set(plan.tpIds || []);
+  const linkedByAtp = !!(
+    (allocation.atpItemId && planAtpIds.has(allocation.atpItemId)) ||
+    (allocation.sourceId && planAtpIds.has(allocation.sourceId))
+  );
+  const linkedByTp = !!(allocation.tpId && planTpIds.has(allocation.tpId));
+  return linkedByAtp || linkedByTp;
+}
+
 /**
  * Resolves allocated JP strictly from real data hierarchy:
  * 1. explicit LearningPlan.allocatedJP
@@ -153,7 +165,7 @@ export function resolveLearningPlanAllocatedJP(
   if (context.timeAllocations && context.timeAllocations.length > 0) {
     const scopedAllocations = context.timeAllocations.filter((ta) => !ta.academicSettingId || ta.academicSettingId === plan.academicSettingId);
     const relatedById = plan.timeAllocationIds && plan.timeAllocationIds.length > 0
-      ? scopedAllocations.filter((ta) => plan.timeAllocationIds?.includes(ta.id))
+      ? scopedAllocations.filter((ta) => plan.timeAllocationIds?.includes(ta.id) && isTimeAllocationRelatedToPlan(ta, plan))
       : [];
     const relatedByAtp = (plan.atpItemIds || []).length > 0
       ? scopedAllocations.filter((ta) => {
@@ -258,6 +270,30 @@ export function normalizeAIAssessmentPlan(raw: any, tpIds: string[]): LearningPl
   };
 }
 
+export function normalizeAIResources(raw: any): LearningPlan['resources'] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((resource, idx) => {
+      if (typeof resource === 'string') {
+        const title = resource.trim();
+        return title ? { id: `res-ai-${idx + 1}-${Date.now().toString(36)}`, title } : null;
+      }
+      if (!resource || typeof resource !== 'object') return null;
+      const title = typeof resource.title === 'string' && resource.title.trim()
+        ? resource.title.trim()
+        : (typeof resource.source === 'string' && resource.source.trim() ? resource.source.trim() : '');
+      if (!title) return null;
+      return {
+        id: `res-ai-${idx + 1}-${Date.now().toString(36)}`,
+        type: typeof resource.type === 'string' ? resource.type : undefined,
+        title,
+        source: typeof resource.source === 'string' ? resource.source : undefined,
+        url: typeof resource.url === 'string' ? resource.url : undefined,
+      };
+    })
+    .filter((resource): resource is NonNullable<LearningPlan['resources']>[number] => resource !== null);
+}
+
 export interface LearningPlanValidationResult {
   valid: boolean;
   isValid: boolean;
@@ -319,6 +355,9 @@ export function validateLearningPlan(
     errors.push('ID Pengaturan Akademik (academicSettingId) tidak valid.');
   } else if (context.academicSetting && context.academicSetting.id !== plan.academicSettingId) {
     errors.push(`ID Pengaturan Akademik tidak sesuai (Plan: ${plan.academicSettingId}, Context: ${context.academicSetting.id}).`);
+  }
+  if (!plan.curriculumType || !context.academicSetting?.curriculumType || plan.curriculumType !== context.academicSetting.curriculumType) {
+    errors.push('Kurikulum LearningPlan belum terselesaikan.');
   }
 
   const objectiveResolution = resolveLearningPlanObjectives({
@@ -646,6 +685,7 @@ export function createAIDraftLearningPlan(params: {
   const objectives = resolveLearningPlanObjectives({ tpIds, tp: context?.tp, curriculumType }).objectives;
   const normalizedAssessmentPlan = normalizeAIAssessmentPlan(aiDraft.assessmentPlan, tpIds);
   const normalizedDeepLearningContext = normalizeDeepLearningContext(aiDraft.deepLearningContext);
+  const normalizedResources = normalizeAIResources(aiDraft.resources);
 
   return {
     id: `lp-ai-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -688,7 +728,7 @@ export function createAIDraftLearningPlan(params: {
       formative: normalizedAssessmentPlan.formative,
       summative: normalizedAssessmentPlan.summative,
     },
-    resources: aiDraft.resources || [],
+    resources: normalizedResources,
     differentiation: aiDraft.differentiation,
     meaningfulUnderstanding: aiDraft.meaningfulUnderstanding,
     triggerQuestions: aiDraft.triggerQuestions,
