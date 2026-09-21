@@ -268,7 +268,7 @@ export function loadAppStorage(): AppStorageState {
 
     // Auto-migrate: ensure all academicSettings have explicit curriculumType and derived phases
     parsed.academicSettings = parsed.academicSettings.map((setting) => {
-      const derived = setting.grade ? getPhaseFromGrade(setting.level || 'SD', setting.grade) : '';
+      const derived = (setting.level && setting.grade) ? getPhaseFromGrade(setting.level, setting.grade) : '';
       const curType = getCurriculumTypeFromSetting(setting);
       let changed = false;
       const updated = { ...setting };
@@ -536,9 +536,14 @@ export function getProfileWorkspace(profileId?: string, workspaceId?: string): P
 
   // Ensure derived phase is always up to date if level and grade exist
   if (academicSetting) {
-    const derivedPhase = getPhaseFromGrade(academicSetting.level, academicSetting.grade);
-    if (derivedPhase && academicSetting.phase !== derivedPhase) {
-      academicSetting.phase = derivedPhase;
+    const derivedPhase = (academicSetting.level && academicSetting.grade)
+      ? getPhaseFromGrade(academicSetting.level, academicSetting.grade)
+      : '';
+    if (derivedPhase !== academicSetting.phase) {
+      academicSetting = {
+        ...academicSetting,
+        phase: derivedPhase,
+      };
     }
   }
 
@@ -768,7 +773,7 @@ export function createWorkspace(params: {
     : generateWorkspaceName(newSetting);
 
   const newWorkspace: AdministrationWorkspace = {
-    id: `ws-${Date.now()}`,
+    id: `ws-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     profileId: profile.id,
     schoolId,
     academicSettingId: newSettingId,
@@ -841,7 +846,7 @@ export function duplicateWorkspace(sourceWorkspaceId: string, newGrade?: string,
 
   const targetGrade = newGrade || sourceSetting.grade;
   const targetSubject = newSubject || sourceSetting.subject;
-  const derivedPhase = getPhaseFromGrade(sourceSetting.level, targetGrade);
+  const derivedPhase = (sourceSetting.level && targetGrade) ? getPhaseFromGrade(sourceSetting.level, targetGrade) : '';
   const curType = getCurriculumTypeFromSetting(sourceSetting);
 
   const newSettingId = `acad-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -858,7 +863,7 @@ export function duplicateWorkspace(sourceWorkspaceId: string, newGrade?: string,
   const clonedName = generateWorkspaceName(clonedSetting);
 
   const clonedWs: AdministrationWorkspace = {
-    id: `ws-${Date.now()}`,
+    id: `ws-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     profileId: sourceWs.profileId,
     schoolId: sourceWs.schoolId,
     academicSettingId: newSettingId,
@@ -902,7 +907,7 @@ export function duplicateWorkspace(sourceWorkspaceId: string, newGrade?: string,
           ...sourceTP,
           id: `tp-${newSettingId}`,
           academicSettingId: newSettingId,
-          items: (sourceTP.items || []).map((it, idx) => ({ ...it, id: `tp-${Date.now()}-${idx}` })),
+          items: (sourceTP.items || []).map((it, idx) => ({ ...it, id: `tp-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}` })),
           updatedAt: new Date().toISOString(),
         }
       : {
@@ -918,7 +923,7 @@ export function duplicateWorkspace(sourceWorkspaceId: string, newGrade?: string,
           ...sourceATP,
           id: `atp-${newSettingId}`,
           academicSettingId: newSettingId,
-          items: (sourceATP.items || []).map((it, idx) => ({ ...it, id: `atp-item-${Date.now()}-${idx}` })),
+          items: (sourceATP.items || []).map((it, idx) => ({ ...it, id: `atp-item-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}` })),
           updatedAt: new Date().toISOString(),
         }
       : {
@@ -933,7 +938,7 @@ export function duplicateWorkspace(sourceWorkspaceId: string, newGrade?: string,
     state.cps.push(clonedCP);
     state.tps.push(clonedTP);
     state.atps.push(clonedATP);
-  } else {
+  } else if (curType === 'K13') {
     // Clone K13 data for K13 only
     const sourceAnalysis = (state.k13Analyses || []).find((k) => k.academicSettingId === sourceSetting.id);
     const clonedAnalysis: K13Analysis = sourceAnalysis
@@ -941,7 +946,7 @@ export function duplicateWorkspace(sourceWorkspaceId: string, newGrade?: string,
           ...sourceAnalysis,
           id: `k13-ana-${newSettingId}`,
           academicSettingId: newSettingId,
-          items: (sourceAnalysis.items || []).map((it, idx) => ({ ...it, id: `k13-item-${Date.now()}-${idx}` })),
+          items: (sourceAnalysis.items || []).map((it, idx) => ({ ...it, id: `k13-item-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}` })),
           updatedAt: new Date().toISOString(),
         }
       : {
@@ -959,7 +964,7 @@ export function duplicateWorkspace(sourceWorkspaceId: string, newGrade?: string,
         ...sourceKKM,
         id: `k13-kkm-${newSettingId}`,
         academicSettingId: newSettingId,
-        items: (sourceKKM.items || []).map((it, idx) => ({ ...it, id: `kkm-item-${Date.now()}-${idx}` })),
+        items: (sourceKKM.items || []).map((it, idx) => ({ ...it, id: `kkm-item-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}` })),
         updatedAt: new Date().toISOString(),
       };
       state.k13KKMs = [...(state.k13KKMs || []), clonedKKM];
@@ -1403,7 +1408,7 @@ export function saveCPAnalysis(analysis: CPAnalysisData): void {
 
 export function saveAcademicSetting(setting: AcademicSetting, customWorkspaceName?: string): void {
   const current = loadAppStorage();
-  const derived = setting.grade ? getPhaseFromGrade(setting.level || 'SD', setting.grade) : '';
+  const derived = (setting.level && setting.grade) ? getPhaseFromGrade(setting.level, setting.grade) : '';
   const normalized = { ...setting, phase: derived, updatedAt: new Date().toISOString() };
 
   const idx = current.academicSettings.findIndex((a) => a.id === setting.id);

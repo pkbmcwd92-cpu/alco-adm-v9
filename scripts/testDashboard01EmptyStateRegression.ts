@@ -10,6 +10,7 @@ import {
   createWorkspace,
   duplicateWorkspace,
   saveK13KKM,
+  saveAppStorage,
   generateWorkspaceName,
 } from '../src/services/storage';
 import { TeacherProfile, SchoolData, K13KKM } from '../src/types';
@@ -203,8 +204,8 @@ assert.strictEqual(k13Read.k13KKM, undefined, 'K13 read with no KKM remains unre
 assert.strictEqual(beforeK13Read, afterK13Read, 'K13 read must not mutate storage or fabricate KKM/KD');
 console.log('✓ TEST 6 PASSED');
 
-// TEST 7: Unknown curriculum remains unresolved and creates no curriculum artifacts
-console.log('\n[TEST 7] Verifying unknown curriculum stays unresolved...');
+// TEST 7: Unknown curriculum remains unresolved and creates no curriculum artifacts (including duplication)
+console.log('\n[TEST 7] Verifying unknown curriculum stays unresolved on create and duplication...');
 const unknownWs = createWorkspace({
   profileId: profile.id,
   setting: {
@@ -216,12 +217,39 @@ const unknownWs = createWorkspace({
 });
 const stateAfterUnknown = loadAppStorage();
 const unknownSetting = stateAfterUnknown.academicSettings.find((s) => s.id === unknownWs.academicSettingId)!;
-assert.strictEqual(unknownSetting.curriculumType, undefined, 'Unknown curriculum must not resolve to Merdeka');
+assert.strictEqual(unknownSetting.curriculumType, undefined, 'Unknown curriculum must not resolve to Merdeka or K13');
 assert.strictEqual(stateAfterUnknown.cps.some((c) => c.academicSettingId === unknownSetting.id), false, 'Unknown curriculum must not create CP');
 assert.strictEqual(stateAfterUnknown.tps.some((t) => t.academicSettingId === unknownSetting.id), false, 'Unknown curriculum must not create TP');
 assert.strictEqual(stateAfterUnknown.atps.some((a) => a.academicSettingId === unknownSetting.id), false, 'Unknown curriculum must not create ATP');
 assert.strictEqual((stateAfterUnknown.k13Analyses || []).some((k) => k.academicSettingId === unknownSetting.id), false, 'Unknown curriculum must not create K13 structures');
+
+// Duplication of unknown curriculum
+const duplicatedUnknown = duplicateWorkspace(unknownWs.id, 'Kelas 5', 'IPAS');
+assert.ok(duplicatedUnknown, 'Duplicated unknown workspace created');
+const stateAfterUnknownDup = loadAppStorage();
+const dupUnknownSetting = stateAfterUnknownDup.academicSettings.find((s) => s.id === duplicatedUnknown!.academicSettingId)!;
+assert.strictEqual(dupUnknownSetting.curriculumType, undefined, 'Duplicated unknown curriculum must remain undefined');
+assert.strictEqual(dupUnknownSetting.curriculum, 'Kurikulum Eksperimental Sekolah', 'Curriculum name preserved without forced conversion');
+assert.strictEqual(stateAfterUnknownDup.cps.some((c) => c.academicSettingId === dupUnknownSetting.id), false, 'Duplicated unknown must not create CP');
+assert.strictEqual(stateAfterUnknownDup.tps.some((t) => t.academicSettingId === dupUnknownSetting.id), false, 'Duplicated unknown must not create TP');
+assert.strictEqual(stateAfterUnknownDup.atps.some((a) => a.academicSettingId === dupUnknownSetting.id), false, 'Duplicated unknown must not create ATP');
+assert.strictEqual((stateAfterUnknownDup.k13Analyses || []).some((k) => k.academicSettingId === dupUnknownSetting.id), false, 'Duplicated unknown must not create K13Analysis');
+assert.strictEqual((stateAfterUnknownDup.k13KKMs || []).some((k) => k.academicSettingId === dupUnknownSetting.id), false, 'Duplicated unknown must not create K13KKM');
 console.log('✓ TEST 7 PASSED');
+
+// TEST 7B: Explicit Merdeka duplication
+console.log('\n[TEST 7B] Verifying explicit Merdeka duplication routes to Merdeka only...');
+const merdekaDup = duplicateWorkspace(validWs.id, 'Kelas 5', 'IPAS');
+assert.ok(merdekaDup, 'Merdeka duplicate workspace created');
+const stateAfterMerdekaDup = loadAppStorage();
+const merdekaDupSetting = stateAfterMerdekaDup.academicSettings.find((s) => s.id === merdekaDup!.academicSettingId)!;
+assert.strictEqual(merdekaDupSetting.curriculumType, 'KURIKULUM_MERDEKA', 'Curriculum type remains KURIKULUM_MERDEKA');
+assert.strictEqual(stateAfterMerdekaDup.cps.some((c) => c.academicSettingId === merdekaDupSetting.id), true, 'CP created for Merdeka duplicate');
+assert.strictEqual(stateAfterMerdekaDup.tps.some((t) => t.academicSettingId === merdekaDupSetting.id), true, 'TP created for Merdeka duplicate');
+assert.strictEqual(stateAfterMerdekaDup.atps.some((a) => a.academicSettingId === merdekaDupSetting.id), true, 'ATP created for Merdeka duplicate');
+assert.strictEqual((stateAfterMerdekaDup.k13Analyses || []).some((k) => k.academicSettingId === merdekaDupSetting.id), false, 'Merdeka duplicate must NOT create K13Analysis');
+assert.strictEqual((stateAfterMerdekaDup.k13KKMs || []).some((k) => k.academicSettingId === merdekaDupSetting.id), false, 'Merdeka duplicate must NOT create K13KKM');
+console.log('✓ TEST 7B PASSED');
 
 // TEST 8: K13 duplication clones legitimate KKM only when source has it
 console.log('\n[TEST 8] Verifying K13 duplicate preserves absent vs legitimate KKM...');
@@ -255,7 +283,7 @@ const k13CloneWithKkm = duplicateWorkspace(k13Ws.id, 'Kelas 6', 'Matematika');
 assert.ok(k13CloneWithKkm, 'K13 clone with source KKM created');
 stateAfterK13Clone = loadAppStorage();
 const clonedKKM = (stateAfterK13Clone.k13KKMs || []).find((k) => k.academicSettingId === k13CloneWithKkm!.academicSettingId);
-assert.ok(clonedKKM, 'Legitimate source KKM cloned');
+assert.ok(clonedKKM, `Legitimate source KKM cloned. k13Setting.id=${k13Setting.id}, k13KKMs=${JSON.stringify(stateAfterK13Clone.k13KKMs)}`);
 assert.strictEqual(clonedKKM!.kkmMataPelajaran, 82, 'Legitimate KKM value preserved');
 assert.strictEqual(clonedKKM!.items.length, 1, 'Legitimate KKM item cloned');
 console.log('✓ TEST 8 PASSED');
@@ -302,6 +330,31 @@ const unresolvedName = generateWorkspaceName({
 assert.strictEqual(unresolvedName, 'Mata Pelajaran — Kelas - — Sem - — Tahun Ajaran -');
 assert.ok(!unresolvedName.includes('2026/2027'), 'Should not contain 2026/2027 fallback');
 console.log('✓ TEST 11 PASSED');
+
+// TEST 11B: Missing level migration test
+console.log('\n[TEST 11B] Verifying missing level in migration results in unresolved phase...');
+const curStore = loadAppStorage();
+const legacySettingId = `acad-legacy-${Date.now()}`;
+curStore.academicSettings.push({
+  id: legacySettingId,
+  profileId: profile.id,
+  curriculum: 'Kurikulum Merdeka',
+  curriculumType: 'KURIKULUM_MERDEKA',
+  level: '', // Unresolved level
+  grade: 'Kelas 1',
+  phase: 'Fase A', // Stale/legacy value that shouldn't be derived without level
+  subject: 'Matematika',
+  academicYear: '2025/2026',
+  semester: '1 (Ganjil)',
+  updatedAt: new Date().toISOString(),
+});
+saveAppStorage(curStore);
+
+const reloadedStore = loadAppStorage();
+const migratedSetting = reloadedStore.academicSettings.find((s) => s.id === legacySettingId)!;
+assert.strictEqual(migratedSetting.level, '', 'Missing level remains unresolved');
+assert.strictEqual(migratedSetting.phase, '', 'Phase becomes unresolved when level is missing (must NOT fallback to SD/Fase A)');
+console.log('✓ TEST 11B PASSED');
 
 // TEST 12: Delete Profile and Return to Zero-Profile
 console.log('\n[TEST 12] Deleting profiles and verifying clean return to 0-profile state...');
