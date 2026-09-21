@@ -364,10 +364,13 @@ app.post('/api/ai/generate-atp', async (req, res) => {
     return res.status(400).json({ error: 'Semester harus diisi sebelum menyusun ATP.' });
   }
 
-  // If GEMINI_API_KEY is configured, try Gemini AI
-  if (process.env.GEMINI_API_KEY) {
-    try {
-      const prompt = `Anda adalah spesialis penyusun Alur Tujuan Pembelajaran (ATP) dan perangkat pembelajaran Kurikulum Merdeka.
+  // 3. Check AI configuration (GEMINI_API_KEY)
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(503).json({ error: 'Layanan AI belum dikonfigurasi (GEMINI_API_KEY tidak terpasang).' });
+  }
+
+  try {
+    const prompt = `Anda adalah spesialis penyusun Alur Tujuan Pembelajaran (ATP) dan perangkat pembelajaran Kurikulum Merdeka.
 Susunlah Matriks Alur Tujuan Pembelajaran (ATP) yang berurutan secara logis, pedagogis, dan terstruktur dari daftar Tujuan Pembelajaran (TP) berikut:
 
 DATA PEMBELAJARAN:
@@ -397,62 +400,75 @@ INSTRUKSI PENYUSUNAN ATP:
 
 Kembalikan output JSON sesuai schema:`;
 
-      const response = await generateContentWithRetry({
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              rationale: {
-                type: Type.STRING,
-                description: 'Penjelasan rasional mengapa alur TP disusun dalam urutan ini.',
-              },
+    const response = await generateContentWithRetry({
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            rationale: {
+              type: Type.STRING,
+              description: 'Penjelasan rasional mengapa alur TP disusun dalam urutan ini.',
+            },
+            items: {
+              type: Type.ARRAY,
               items: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    stepNumber: { type: Type.INTEGER, description: 'Urutan alur pembelajaran (1, 2, 3...)' },
-                    tpCode: { type: Type.STRING, description: 'Kode TP yang diurutkan' },
-                    tpStatement: { type: Type.STRING, description: 'Rumusan TP' },
-                    materialScope: { type: Type.STRING, description: 'Lingkup Materi / Topik Pembelajaran Spesifik' },
-                    jp: { type: Type.INTEGER, description: 'Jumlah Alokasi Jam Pelajaran (JP), misal 4, 6, 8' },
-                    p3Dimensions: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    assessmentPlan: { type: Type.STRING, description: 'Bentuk Asesmen Awal, Formatif, dan Sumatif' },
-                    glossary: { type: Type.STRING, description: 'Kata kunci / Glosarium istilah penting' },
-                    resources: { type: Type.STRING, description: 'Sumber belajar / Media yang disarankan' },
-                  },
-                  required: [
-                    'stepNumber',
-                    'tpCode',
-                    'tpStatement',
-                    'materialScope',
-                    'jp',
-                    'p3Dimensions',
-                    'assessmentPlan',
-                    'glossary',
-                  ],
+                type: Type.OBJECT,
+                properties: {
+                  stepNumber: { type: Type.INTEGER, description: 'Urutan alur pembelajaran (1, 2, 3...)' },
+                  tpCode: { type: Type.STRING, description: 'Kode TP yang diurutkan' },
+                  tpStatement: { type: Type.STRING, description: 'Rumusan TP' },
+                  materialScope: { type: Type.STRING, description: 'Lingkup Materi / Topik Pembelajaran Spesifik' },
+                  jp: { type: Type.INTEGER, description: 'Jumlah Alokasi Jam Pelajaran (JP), misal 4, 6, 8' },
+                  p3Dimensions: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  assessmentPlan: { type: Type.STRING, description: 'Bentuk Asesmen Awal, Formatif, dan Sumatif' },
+                  glossary: { type: Type.STRING, description: 'Kata kunci / Glosarium istilah penting' },
+                  resources: { type: Type.STRING, description: 'Sumber belajar / Media yang disarankan' },
                 },
+                required: [
+                  'stepNumber',
+                  'tpCode',
+                  'tpStatement',
+                  'materialScope',
+                  'jp',
+                  'p3Dimensions',
+                  'assessmentPlan',
+                  'glossary',
+                ],
               },
             },
-            required: ['rationale', 'items'],
           },
+          required: ['rationale', 'items'],
         },
-      });
+      },
+    });
 
-      const parsed = cleanAndParseJSON(response.text, null);
-      if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-        return res.json({ success: true, data: parsed, engine: 'gemini' });
-      }
-    } catch (error: unknown) {
-      console.warn('Gemini ATP generation failed or unconfigured, using pedagogical fallback engine:', error);
+    const parsed = cleanAndParseJSON(response.text, null);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return res.status(500).json({ error: 'Respons AI tidak memenuhi kualifikasi struktur ATP: Respons bukan berupa objek valid' });
     }
-  }
 
-  // Pedagogical Rule Engine fallback
-  const fallbackMatrix = fallbackGenerateATP({ tps, cpGeneral, subject, grade, phase, semester, academicYear, totalHoursPerWeek });
-  res.json({ success: true, data: fallbackMatrix, engine: 'pedagogical_engine' });
+    if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
+      return res.status(500).json({ error: 'Respons AI tidak memenuhi kualifikasi struktur ATP: Hasil perumusan alur TP kosong atau bukan array' });
+    }
+
+    for (let i = 0; i < parsed.items.length; i++) {
+      const item = parsed.items[i];
+      if (!item || typeof item !== 'object') {
+        return res.status(500).json({ error: `Respons AI tidak memenuhi kualifikasi struktur ATP: Butir langkah ATP ke-${i + 1} bukan berupa objek valid` });
+      }
+      const stmt = item.tpStatement || item.statement;
+      if (!stmt || typeof stmt !== 'string' || stmt.trim() === '') {
+        return res.status(500).json({ error: `Respons AI tidak memenuhi kualifikasi struktur ATP: Rumusan TP pada butir langkah ke-${i + 1} kosong atau tidak valid` });
+      }
+    }
+
+    return res.json({ success: true, data: parsed, engine: 'gemini' });
+  } catch (error: any) {
+    console.error('Gemini ATP generation failed:', error);
+    return res.status(500).json({ error: `Gagal menyusun ATP dengan AI: ${error.message || 'Respons provider AI tidak dapat diproses'}` });
+  }
 });
 
 // 4. Endpoint: AI Refine / Polish any custom text
@@ -488,6 +504,22 @@ Berikan versi teks hasil penyempurnaan dalam bahasa Indonesia yang baku dan eleg
   res.json({ success: true, refinedText: refined, engine: 'pedagogical_engine' });
 });
 
+// Safe phase normalization helper for learning plan
+function normalizeExperiencePhase(phase: any): 'UNDERSTAND' | 'APPLY' | 'REFLECT' | null {
+  if (typeof phase !== 'string') return null;
+  const s = phase.trim().toUpperCase();
+  if (s === 'UNDERSTAND' || s === 'MEMAHAMI') {
+    return 'UNDERSTAND';
+  }
+  if (s === 'APPLY' || s === 'MENGAPLIKASI' || s === 'MENGAPLIKASIKAN') {
+    return 'APPLY';
+  }
+  if (s === 'REFLECT' || s === 'MEREFLEKSI' || s === 'MEREFLEKSIKAN') {
+    return 'REFLECT';
+  }
+  return null;
+}
+
 // Runtime validator for AI Learning Plan response
 function validateAILearningPlanPayload(data: any): { isValid: boolean; reason?: string } {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
@@ -498,17 +530,24 @@ function validateAILearningPlanPayload(data: any): { isValid: boolean; reason?: 
     return { isValid: false, reason: 'Daftar Pengalaman Belajar (learningExperiences) kosong atau bukan array' };
   }
 
-  const validPhases = ['UNDERSTAND', 'APPLY', 'REFLECT'];
   for (let i = 0; i < data.learningExperiences.length; i++) {
     const exp = data.learningExperiences[i];
     if (!exp || typeof exp !== 'object') {
       return { isValid: false, reason: `Butir pengalaman belajar ke-${i + 1} bukan berupa objek` };
     }
-    if (!validPhases.includes(exp.phase)) {
+    const normalizedPhase = normalizeExperiencePhase(exp.phase);
+    if (!normalizedPhase) {
       return { isValid: false, reason: `Fase pengalaman belajar ke-${i + 1} ('${exp.phase}') tidak valid. Pilihan sah: UNDERSTAND, APPLY, REFLECT` };
     }
+    exp.phase = normalizedPhase;
+
     if (!exp.description || typeof exp.description !== 'string' || exp.description.trim() === '') {
       return { isValid: false, reason: `Deskripsi pengalaman belajar ke-${i + 1} kosong` };
+    }
+
+    // Normalization of missing ID: generate deterministic local ID so valid AI content is not rejected
+    if (!exp.id || typeof exp.id !== 'string' || exp.id.trim() === '') {
+      exp.id = `exp-ai-${i + 1}`;
     }
   }
 
@@ -522,6 +561,11 @@ function validateAILearningPlanPayload(data: any): { isValid: boolean; reason?: 
     return { isValid: false, reason: 'Dimensi Profil Lulusan harus berupa array' };
   }
 
+  // Ensure default empty arrays if undefined
+  data.triggerQuestions = Array.isArray(data.triggerQuestions) ? data.triggerQuestions : [];
+  data.resources = Array.isArray(data.resources) ? data.resources : [];
+  data.graduateProfileDimensions = Array.isArray(data.graduateProfileDimensions) ? data.graduateProfileDimensions : [];
+
   return { isValid: true };
 }
 
@@ -530,7 +574,7 @@ app.post('/api/ai/generate-learning-plan', async (req, res) => {
   const { academicSetting, tps, atpItems, topic } = req.body || {};
 
   if (!tps || !Array.isArray(tps) || tps.length === 0) {
-    return res.status(400).json({ error: 'At least one Purpose of Learning (TP) is required to generate a Learning Plan' });
+    return res.status(400).json({ error: 'Minimal satu Tujuan Pembelajaran (TP) diperlukan untuk menyusun Modul Ajar' });
   }
 
   if (!process.env.GEMINI_API_KEY) {
@@ -541,6 +585,16 @@ app.post('/api/ai/generate-learning-plan', async (req, res) => {
     const subject = academicSetting?.subject || '';
     const grade = academicSetting?.grade || '';
     const phase = academicSetting?.phase || '';
+
+    const atpContextStr = atpItems && atpItems.length > 0
+      ? atpItems.map((a: any, i: number) => {
+          const actualJp = typeof a.allocatedJP === 'number' && a.allocatedJP > 0
+            ? a.allocatedJP
+            : (typeof a.jp === 'number' && a.jp > 0 ? a.jp : null);
+          const jpStr = actualJp ? `${actualJp} JP` : 'Belum ditentukan';
+          return `${i + 1}. Langkah ${a.stepNumber || i + 1}: Lingkup ${a.materialScope || '-'} (${jpStr})`;
+        }).join('\n')
+      : 'ATP: Belum tersedia';
 
     const prompt = `Anda adalah spesialis penyusun Modul Ajar / RPP Berdiferensiasi Kurikulum Merdeka 2026 (Deep Learning & Kemendikdasmen).
 Susun draf Modul Ajar pedagogis yang komprehensif berdasarkan data rujukan berikut:
@@ -553,14 +607,16 @@ TUJUAN PEMBELAJARAN (TP) RUJUKAN:
 ${tps.map((t: any, i: number) => `${i + 1}. [Kode: ${t.code || '-'}] ${t.statement} (Materi: ${t.contentScope || '-'}, Kompetensi: ${t.competence || '-'})`).join('\n')}
 
 ATP / ALOKASI JP RUJUKAN:
-${atpItems && atpItems.length > 0 ? atpItems.map((a: any, i: number) => `${i + 1}. Langkah ${a.stepNumber || i + 1}: Lingkup ${a.materialScope || '-'} (${a.jp || 2} JP)`).join('\n') : 'Sesuai standar'}
+${atpContextStr}
 
 INSTRUKSI:
-1. Susun Pengalaman Belajar (learningExperiences) dengan struktur 3 fase utama (UNDERSTAND, APPLY, REFLECT) sesuai panduan 2026.
-2. Gunakan terminologi "Murid" (bukan peserta didik) dan "Dimensi Profil Lulusan".
-3. Sediakan Rencana Asesmen (Asesmen Diagnostik Awal, Formatif, dan Sumatif).
-4. Sediakan Rencana Diferensiasi (Konten, Proses, Produk).
-5. Buat kalimat pemahaman bermakna dan pertanyaan pemantik yang relevan.
+1. Susun Pengalaman Belajar (learningExperiences) dengan struktur 3 fase utama (UNDERSTAND, APPLY, REFLECT) sesuai panduan 2026. Nilai properti "phase" HARUS salah satu dari: "UNDERSTAND", "APPLY", atau "REFLECT".
+2. Setiap Pengalaman Belajar memuat "description" yang jelas dan operasional, serta "durationMinutes" (dalam menit, opsional).
+3. Gunakan terminologi "Murid" (bukan peserta didik) dan "Dimensi Profil Lulusan".
+4. Sediakan Rencana Asesmen (Asesmen Diagnostik Awal, Formatif, dan Sumatif).
+5. Sediakan Rencana Diferensiasi (Konten, Proses, Produk).
+6. Buat kalimat pemahaman bermakna dan pertanyaan pemantik yang relevan.
+7. JANGAN mengarang atau memalsukan Alokasi JP jika belum ditentukan.
 
 Kembalikan output JSON sesuai schema.`;
 

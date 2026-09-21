@@ -32,13 +32,91 @@ export const DEEP_LEARNING_PRINCIPLE_LABELS: Record<DeepLearningPrinciple, strin
 export const GRADUATE_PROFILE_DIMENSIONS_LABEL = 'Dimensi Profil Lulusan';
 export const LEARNING_EXPERIENCES_LABEL = 'Pengalaman Belajar';
 
+export function normalizeLearningExperiencePhase(raw: unknown): LearningExperiencePhase | null {
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim().toUpperCase();
+  if (s === 'UNDERSTAND' || s === 'MEMAHAMI') {
+    return 'UNDERSTAND';
+  }
+  if (s === 'APPLY' || s === 'MENGAPLIKASI' || s === 'MENGAPLIKASIKAN') {
+    return 'APPLY';
+  }
+  if (s === 'REFLECT' || s === 'MEREFLEKSI' || s === 'MEREFLEKSIKAN') {
+    return 'REFLECT';
+  }
+  return null;
+}
+
+export interface LearningPlanJPResolution {
+  allocatedJP?: number;
+  source: 'EXPLICIT_PLAN' | 'CANONICAL_ATP' | 'LINKED_TIME_ALLOCATION' | 'UNRESOLVED';
+}
+
+/**
+ * Resolves allocated JP strictly from real data hierarchy:
+ * 1. explicit LearningPlan.allocatedJP
+ * 2. canonical ATP allocatedJP / jp from linked atpItemIds
+ * 3. linked TimeAllocation actual value
+ * 4. UNRESOLVED (undefined)
+ * Never guesses or falls back to synthetic numbers like 2.
+ */
+export function resolveLearningPlanAllocatedJP(
+  plan: LearningPlan,
+  context: {
+    atp?: ATPData | null;
+    timeAllocations?: TimeAllocation[] | null;
+  }
+): LearningPlanJPResolution {
+  // 1. Explicit LearningPlan.allocatedJP
+  if (typeof plan.allocatedJP === 'number' && !isNaN(plan.allocatedJP) && plan.allocatedJP > 0) {
+    return { allocatedJP: plan.allocatedJP, source: 'EXPLICIT_PLAN' };
+  }
+
+  // 2. Canonical ATP allocatedJP / jp from referenced atpItemIds
+  if (plan.atpItemIds && plan.atpItemIds.length > 0 && context.atp?.items) {
+    const matchedAtps = context.atp.items.filter((item) => plan.atpItemIds.includes(item.id));
+    const totalAtpJP = matchedAtps.reduce((sum, item) => {
+      const jpVal = typeof item.allocatedJP === 'number' && item.allocatedJP > 0
+        ? item.allocatedJP
+        : (typeof item.jp === 'number' && item.jp > 0 ? item.jp : 0);
+      return sum + jpVal;
+    }, 0);
+
+    if (totalAtpJP > 0) {
+      return { allocatedJP: totalAtpJP, source: 'CANONICAL_ATP' };
+    }
+  }
+
+  // 3. Linked TimeAllocation actual value
+  if (context.timeAllocations && context.timeAllocations.length > 0 && plan.timeAllocationIds && plan.timeAllocationIds.length > 0) {
+    const matchedAllocs = context.timeAllocations.filter((ta) => plan.timeAllocationIds?.includes(ta.id));
+    const totalAllocJP = matchedAllocs.reduce((sum, a) => {
+      const val = typeof a.allocatedJP === 'number' && a.allocatedJP > 0
+        ? a.allocatedJP
+        : (typeof a.jp === 'number' && a.jp > 0 ? a.jp : 0);
+      return sum + val;
+    }, 0);
+
+    if (totalAllocJP > 0) {
+      return { allocatedJP: totalAllocJP, source: 'LINKED_TIME_ALLOCATION' };
+    }
+  }
+
+  // 4. UNRESOLVED (Never guess, never fallback to synthetic numbers)
+  return { allocatedJP: undefined, source: 'UNRESOLVED' };
+}
+
 export interface LearningPlanValidationResult {
   valid: boolean;
+  isValid: boolean;
   errors: string[];
   warnings: string[];
+  draftErrors: string[];
+  finalizationErrors: string[];
   resolvedTPs: Array<{ id: string; code?: string; statement: string; materialScope?: string }>;
   resolvedATPs: Array<{ id: string; stepNumber?: number; materialScope?: string; jp?: number }>;
   resolvedAllocatedJP?: number;
+  jpResolutionSource?: 'EXPLICIT_PLAN' | 'CANONICAL_ATP' | 'LINKED_TIME_ALLOCATION' | 'UNRESOLVED';
 }
 
 /**
@@ -62,7 +140,9 @@ export function validateLearningPlan(
     assessmentCriteria?: AssessmentCriterion[] | null;
   }
 ): LearningPlanValidationResult {
-  const errors: string[] = [];
+  const draftErrors: string[] = [];
+  const finalizationErrors: string[] = [];
+  const errors: string[] = draftErrors;
   const warnings: string[] = [];
   const resolvedTPs: Array<{ id: string; code?: string; statement: string; materialScope?: string }> = [];
   const resolvedATPs: Array<{ id: string; stepNumber?: number; materialScope?: string; jp?: number }> = [];
@@ -70,10 +150,15 @@ export function validateLearningPlan(
   if (!plan) {
     return {
       valid: false,
+      isValid: false,
       errors: ['Data Perencanaan Pembelajaran (LearningPlan) tidak ditemukan / kosong.'],
       warnings: [],
+      draftErrors: ['Data Perencanaan Pembelajaran (LearningPlan) tidak ditemukan / kosong.'],
+      finalizationErrors: [],
       resolvedTPs: [],
       resolvedATPs: [],
+      resolvedAllocatedJP: undefined,
+      jpResolutionSource: 'UNRESOLVED',
     };
   }
 
@@ -317,42 +402,42 @@ export function validateLearningPlan(
   }
 
   // 9. Time / JP Allocation Resolution (Strictly from real data)
-  let resolvedAllocatedJP: number | undefined = undefined;
-  if (typeof plan.allocatedJP === 'number' && !isNaN(plan.allocatedJP) && plan.allocatedJP > 0) {
-    resolvedAllocatedJP = plan.allocatedJP;
-  } else if (resolvedATPs.length > 0) {
-    const totalAtpJP = resolvedATPs.reduce((sum, item) => sum + (item.jp || 0), 0);
-    if (totalAtpJP > 0) {
-      resolvedAllocatedJP = totalAtpJP;
-    }
-  } else if (context.timeAllocations && context.timeAllocations.length > 0 && plan.timeAllocationIds && plan.timeAllocationIds.length > 0) {
-    const matchedAllocs = context.timeAllocations.filter((ta) => plan.timeAllocationIds?.includes(ta.id));
-    const totalAllocJP = matchedAllocs.reduce((sum, a) => sum + (a.allocatedJP || a.jp || 0), 0);
-    if (totalAllocJP > 0) {
-      resolvedAllocatedJP = totalAllocJP;
-    }
+  const jpResolution = resolveLearningPlanAllocatedJP(plan, {
+    atp: context.atp,
+    timeAllocations: context.timeAllocations,
+  });
+  const resolvedAllocatedJP = jpResolution.allocatedJP;
+
+  if (resolvedAllocatedJP === undefined) {
+    warnings.push('Alokasi JP belum ditentukan.');
   }
 
   // 10. Lifecycle & Status Validation
   if (plan.status === 'SIAP') {
-    if (errors.length > 0) {
-      errors.push('Status SIAP tidak valid karena masih terdapat kesalahan integritas data.');
+    if (draftErrors.length > 0) {
+      finalizationErrors.push('Status SIAP tidak valid karena masih terdapat kesalahan integritas data draf.');
     }
     if (!plan.confirmedAt) {
-      errors.push('Status SIAP memerlukan konfirmasi dan penetapan eksplisit dari guru (confirmedAt belum tercatat).');
+      finalizationErrors.push('Status SIAP memerlukan konfirmasi dan penetapan eksplisit dari guru (confirmedAt belum tercatat).');
     }
     if (plan.sourceType === 'AI_DRAFT' && !plan.confirmedAt) {
-      errors.push('Keluaran draf AI tidak boleh langsung berstatus SIAP tanpa peninjauan guru.');
+      finalizationErrors.push('Keluaran draf AI tidak boleh langsung berstatus SIAP tanpa peninjauan guru.');
     }
   }
 
+  const allErrors = [...draftErrors, ...finalizationErrors];
+
   return {
-    valid: errors.length === 0,
-    errors,
+    valid: allErrors.length === 0,
+    isValid: allErrors.length === 0,
+    errors: allErrors,
     warnings,
+    draftErrors,
+    finalizationErrors,
     resolvedTPs,
     resolvedATPs,
     resolvedAllocatedJP,
+    jpResolutionSource: jpResolution.source,
   };
 }
 
@@ -458,7 +543,26 @@ export function createAIDraftLearningPlan(params: {
     title: aiDraft.title || (objectives.length > 0 ? `Draf Modul Ajar: ${objectives[0].materialScope || objectives[0].code || 'Topik'}` : 'Draf Modul Ajar'),
     topic: aiDraft.topic || (objectives.length > 0 ? objectives[0].materialScope : ''),
     objectives: objectives.length > 0 ? objectives : (aiDraft.objectives || []),
-    learningExperiences: Array.isArray(aiDraft.learningExperiences) ? aiDraft.learningExperiences : [],
+    learningExperiences: Array.isArray(aiDraft.learningExperiences)
+      ? aiDraft.learningExperiences.map((exp, idx) => {
+          const normPhase = normalizeLearningExperiencePhase(exp.phase) || exp.phase;
+          return {
+            id: exp.id && typeof exp.id === 'string' && exp.id.trim() !== ''
+              ? exp.id
+              : `exp-ai-${idx + 1}-${Date.now().toString(36)}`,
+            phase: normPhase as LearningExperiencePhase,
+            description: exp.description || '',
+            durationMinutes:
+              typeof exp.durationMinutes === 'number' &&
+              Number.isFinite(exp.durationMinutes) &&
+              !isNaN(exp.durationMinutes) &&
+              exp.durationMinutes > 0
+                ? exp.durationMinutes
+                : undefined,
+            linkedTpIds: Array.isArray(exp.linkedTpIds) ? exp.linkedTpIds : undefined,
+          };
+        })
+      : [],
     deepLearningContext: aiDraft.deepLearningContext,
     graduateProfileDimensions: Array.isArray(aiDraft.graduateProfileDimensions) ? aiDraft.graduateProfileDimensions : undefined,
     learningSteps: {
@@ -482,7 +586,7 @@ export function createAIDraftLearningPlan(params: {
     targetStudents: aiDraft.targetStudents,
     learningModel: aiDraft.learningModel,
     p3Dimensions: aiDraft.p3Dimensions,
-    allocatedJP: typeof aiDraft.allocatedJP === 'number' ? aiDraft.allocatedJP : undefined,
+    allocatedJP: typeof aiDraft.allocatedJP === 'number' && !isNaN(aiDraft.allocatedJP) && aiDraft.allocatedJP > 0 ? aiDraft.allocatedJP : undefined,
     createdAt: now,
     updatedAt: now,
   };

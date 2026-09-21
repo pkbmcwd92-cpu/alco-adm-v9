@@ -1,4 +1,5 @@
 import { CPElem, TPItem, ATPItem, AcademicSetting, LearningPlan } from '../types';
+import { normalizeLearningExperiencePhase } from './learningPlanService';
 
 export interface CPAnalysisResult {
   summary: string;
@@ -149,22 +150,26 @@ export async function generateLearningPlanWithAI(params: GenerateLearningPlanPar
       throw new Error('Hasil respon AI Modul Ajar tidak berbentuk objek valid.');
     }
 
-    // Runtime validation for critical structure
+    // Runtime validation and normalization for critical structure
     if (!Array.isArray(data.data.learningExperiences) || data.data.learningExperiences.length === 0) {
       throw new Error('Hasil respon AI Modul Ajar tidak memuat Pengalaman Belajar (learningExperiences).');
     }
 
-    const validPhases = ['UNDERSTAND', 'APPLY', 'REFLECT'];
     for (let i = 0; i < data.data.learningExperiences.length; i++) {
       const exp = data.data.learningExperiences[i];
       if (!exp || typeof exp !== 'object') {
         throw new Error(`Butir pengalaman belajar ke-${i + 1} tidak valid.`);
       }
-      if (!validPhases.includes(exp.phase)) {
-        throw new Error(`Fase pengalaman belajar ke-${i + 1} ('${exp.phase}') tidak sah.`);
+      const normPhase = normalizeLearningExperiencePhase(exp.phase);
+      if (!normPhase) {
+        throw new Error(`Fase pengalaman belajar ke-${i + 1} ('${exp.phase}') tidak sah. Pilihan sah: UNDERSTAND, APPLY, REFLECT`);
       }
+      exp.phase = normPhase;
       if (!exp.description || typeof exp.description !== 'string' || exp.description.trim() === '') {
         throw new Error(`Deskripsi pengalaman belajar ke-${i + 1} kosong.`);
+      }
+      if (!exp.id || typeof exp.id !== 'string' || exp.id.trim() === '') {
+        exp.id = `exp-ai-${i + 1}`;
       }
     }
 
@@ -188,6 +193,9 @@ export async function generateATPWithAI(params: GenerateATPParams): Promise<Gene
     }
 
     const data = await res.json();
+    if (!data.data || !Array.isArray(data.data.items) || data.data.items.length === 0) {
+      throw new Error('Hasil respon AI ATP tidak memuat butir alur yang valid.');
+    }
     return data.data;
   } catch (err) {
     throw new Error(formatAIErrorMessage(err, 'menyusun Alur Tujuan Pembelajaran'));
