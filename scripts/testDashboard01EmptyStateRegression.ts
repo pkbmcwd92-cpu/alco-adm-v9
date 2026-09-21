@@ -356,6 +356,46 @@ assert.strictEqual(migratedSetting.level, '', 'Missing level remains unresolved'
 assert.strictEqual(migratedSetting.phase, '', 'Phase becomes unresolved when level is missing (must NOT fallback to SD/Fase A)');
 console.log('✓ TEST 11B PASSED');
 
+// TEST A: Source guard direct mutation
+console.log('\n[TEST A] Verifying getProfileWorkspace does not directly mutate academicSetting.phase...');
+const storageSource = fs.readFileSync(
+  new URL('../src/services/storage.ts', import.meta.url),
+  'utf8'
+);
+
+assert.ok(
+  !/academicSetting\.phase\s*=/.test(storageSource),
+  'getProfileWorkspace must not directly mutate academicSetting.phase'
+);
+console.log('✓ TEST A PASSED');
+
+// TEST B: Migration valid level + grade
+console.log('\n[TEST B] Verifying migration on valid level + grade derives correct phase...');
+const legacyStore = loadAppStorage();
+const legacySettingIdValid = `acad-legacy-valid-${Date.now()}`;
+legacyStore.academicSettings.push({
+  id: legacySettingIdValid,
+  profileId: profile.id,
+  curriculum: 'Kurikulum Merdeka',
+  curriculumType: 'KURIKULUM_MERDEKA',
+  level: 'SD',
+  grade: 'Kelas 4',
+  phase: '', // Empty/stale phase on legacy data
+  subject: 'IPAS',
+  academicYear: '2025/2026',
+  semester: '1 (Ganjil)',
+  updatedAt: new Date().toISOString(),
+});
+saveAppStorage(legacyStore);
+
+// Trigger migration via loadAppStorage()
+const reloadedLegacyStore = loadAppStorage();
+const migratedValidSetting = reloadedLegacyStore.academicSettings.find((s) => s.id === legacySettingIdValid)!;
+assert.strictEqual(migratedValidSetting.level, 'SD', 'Level preserved as SD');
+assert.strictEqual(migratedValidSetting.grade, 'Kelas 4', 'Grade preserved as Kelas 4');
+assert.strictEqual(migratedValidSetting.phase, 'Fase B', 'Phase derived as Fase B during migration for valid level + grade');
+console.log('✓ TEST B PASSED');
+
 // TEST 12: Delete Profile and Return to Zero-Profile
 console.log('\n[TEST 12] Deleting profiles and verifying clean return to 0-profile state...');
 deleteProfile(invalidSchoolProfile.id);
