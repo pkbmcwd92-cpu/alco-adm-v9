@@ -36,12 +36,7 @@ import { migrateLegacyLearningPlan, invalidatePlanIfDependenciesChanged } from '
 import { invalidateAssessmentPlanDependencies } from './assessmentPlanService';
 import { invalidateAssessmentPackageDependencies } from './assessmentPackageService';
 import {
-  INITIAL_PROFILES,
   INITIAL_SCHOOL,
-  INITIAL_ACADEMIC_SETTINGS,
-  INITIAL_CP_DATA,
-  INITIAL_TP_DATA,
-  INITIAL_ATP_DATA,
   buildActiveContext,
   getPhaseFromGrade,
 } from '../data/curriculumDefaults';
@@ -118,112 +113,21 @@ export function generateWorkspaceName(setting: {
 }
 
 export function getInitialState(): AppStorageState {
-  const initialWorkspaces: AdministrationWorkspace[] = [
-    {
-      id: 'ws-prof-1-1',
-      profileId: 'prof-1',
-      schoolId: 'sch-default-1',
-      academicSettingId: 'acad-prof-1',
-      name: 'PJOK — Kelas 1 — Sem 1 — 2026/2027',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: 'ws-prof-2-1',
-      profileId: 'prof-2',
-      schoolId: 'sch-default-1',
-      academicSettingId: 'acad-prof-2',
-      name: 'Bahasa Indonesia — Kelas 4 — Sem 1 — 2025/2026',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: 'ws-prof-3-1',
-      profileId: 'prof-3',
-      schoolId: 'sch-default-1',
-      academicSettingId: 'acad-prof-3',
-      name: 'Matematika — Kelas 4 — Sem 1 — 2025/2026',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ];
-
   return {
     version: 4,
-    activeProfileId: INITIAL_PROFILES[0].id,
-    activeWorkspaceId: initialWorkspaces[0].id,
-    profiles: [...INITIAL_PROFILES],
+    activeProfileId: '',
+    activeWorkspaceId: '',
+    profiles: [],
     schools: [{ ...INITIAL_SCHOOL }],
     teacherSchoolAssignments: [],
     principalHistories: [],
-    workspaces: initialWorkspaces,
-    academicSettings: [...INITIAL_ACADEMIC_SETTINGS],
-    cps: [...INITIAL_CP_DATA],
+    workspaces: [],
+    academicSettings: [],
+    cps: [],
     cpAnalyses: [],
-    tps: [...INITIAL_TP_DATA],
-    atps: [...INITIAL_ATP_DATA],
-    documents: [
-      {
-        id: 'doc-atp-1',
-        type: 'ATP',
-        title: 'Alur Tujuan Pembelajaran (ATP) - PJOK Kelas 1 Fase A',
-        status: 'completed',
-        lastGenerated: new Date().toISOString(),
-        fileName: 'ATP_PJOK_Kelas_1_Fase_A.docx',
-        academicSettingId: 'acad-prof-1',
-        workspaceId: 'ws-prof-1-1',
-      },
-      {
-        id: 'doc-prota-1',
-        type: 'PROTA',
-        title: 'Program Tahunan (PROTA)',
-        status: 'completed',
-        lastGenerated: new Date().toISOString(),
-        fileName: 'PROTA_PJOK_Kelas_1.docx',
-        academicSettingId: 'acad-prof-1',
-        workspaceId: 'ws-prof-1-1',
-      },
-      {
-        id: 'doc-promes-1',
-        type: 'PROMES',
-        title: 'Program Semester (PROMES)',
-        status: 'completed',
-        lastGenerated: new Date().toISOString(),
-        fileName: 'PROMES_PJOK_Kelas_1.docx',
-        academicSettingId: 'acad-prof-1',
-        workspaceId: 'ws-prof-1-1',
-      },
-      {
-        id: 'doc-modul-1',
-        type: 'MODUL_AJAR',
-        title: 'Modul Ajar / RPP Berdiferensiasi',
-        status: 'completed',
-        lastGenerated: new Date().toISOString(),
-        fileName: 'Modul_Ajar_PJOK_Kelas_1.docx',
-        academicSettingId: 'acad-prof-1',
-        workspaceId: 'ws-prof-1-1',
-      },
-      {
-        id: 'doc-asesmen-1',
-        type: 'ASESMEN',
-        title: 'Instrumen Asesmen & Rubrik',
-        status: 'completed',
-        lastGenerated: new Date().toISOString(),
-        fileName: 'Asesmen_PJOK_Kelas_1.docx',
-        academicSettingId: 'acad-prof-1',
-        workspaceId: 'ws-prof-1-1',
-      },
-      {
-        id: 'doc-jurnal-1',
-        type: 'JURNAL',
-        title: 'Jurnal Harian Mengajar & Refleksi',
-        status: 'completed',
-        lastGenerated: new Date().toISOString(),
-        fileName: 'Jurnal_Mengajar_PJOK_Kelas_1.docx',
-        academicSettingId: 'acad-prof-1',
-        workspaceId: 'ws-prof-1-1',
-      },
-    ],
+    tps: [],
+    atps: [],
+    documents: [],
     students: [],
     academicCalendars: [],
     effectiveDays: [],
@@ -285,7 +189,7 @@ export function loadAppStorage(): AppStorageState {
     }
 
     const parsed = JSON.parse(raw) as AppStorageState;
-    if (!parsed || !parsed.profiles || parsed.profiles.length === 0) {
+    if (!parsed || !Array.isArray(parsed.profiles)) {
       const initial = getInitialState();
       saveAppStorage(initial);
       return initial;
@@ -294,20 +198,13 @@ export function loadAppStorage(): AppStorageState {
     let needsResave = false;
 
     // Ensure collections exist
-    if (!parsed.workspaces || !Array.isArray(parsed.workspaces) || parsed.workspaces.length === 0) {
+    if (!Array.isArray(parsed.workspaces)) {
       parsed.workspaces = [];
-      parsed.academicSettings.forEach((setting) => {
-        const ws: AdministrationWorkspace = {
-          id: `ws-${setting.id}`,
-          profileId: setting.profileId,
-          schoolId: parsed.profiles.find((p) => p.id === setting.profileId)?.schoolId || parsed.schools[0]?.id || 'sch-default-1',
-          academicSettingId: setting.id,
-          name: generateWorkspaceName(setting),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        parsed.workspaces.push(ws);
-      });
+      needsResave = true;
+    }
+
+    if (!Array.isArray(parsed.academicSettings)) {
+      parsed.academicSettings = [];
       needsResave = true;
     }
 
@@ -317,8 +214,6 @@ export function loadAppStorage(): AppStorageState {
     if (!Array.isArray(parsed.assessmentPackages)) { parsed.assessmentPackages = []; needsResave = true; }
 
     // Migration: ensure every profile has a valid schoolId
-    // If TeacherProfile.schoolId is valid, keep it.
-    // If empty/invalid, use legacy assignment once if available, otherwise default to first school.
     parsed.profiles.forEach((p) => {
       const isSchoolValid = p.schoolId && parsed.schools.some((s) => s.id === p.schoolId);
       if (!isSchoolValid) {
@@ -342,7 +237,33 @@ export function loadAppStorage(): AppStorageState {
         needsResave = true;
       }
     });
+
+    if (!Array.isArray(parsed.documents)) { parsed.documents = []; needsResave = true; }
+    if (!Array.isArray(parsed.cps)) { parsed.cps = []; needsResave = true; }
+    else {
+      parsed.cps = parsed.cps.map((c) => ({
+        ...c,
+        elements: Array.isArray(c.elements) ? c.elements : [],
+      }));
+    }
+
     if (!Array.isArray(parsed.cpAnalyses)) { parsed.cpAnalyses = []; needsResave = true; }
+    if (!Array.isArray(parsed.tps)) { parsed.tps = []; needsResave = true; }
+    else {
+      parsed.tps = parsed.tps.map((t) => ({
+        ...t,
+        items: Array.isArray(t.items) ? t.items : [],
+      }));
+    }
+
+    if (!Array.isArray(parsed.atps)) { parsed.atps = []; needsResave = true; }
+    else {
+      parsed.atps = parsed.atps.map((a) => ({
+        ...a,
+        items: Array.isArray(a.items) ? a.items : [],
+      }));
+    }
+
     if (!Array.isArray(parsed.academicCalendars)) { parsed.academicCalendars = []; needsResave = true; }
     if (!Array.isArray(parsed.effectiveDays)) { parsed.effectiveDays = []; needsResave = true; }
     if (!Array.isArray(parsed.timeAllocations)) { parsed.timeAllocations = []; needsResave = true; }
@@ -357,37 +278,6 @@ export function loadAppStorage(): AppStorageState {
     if (!Array.isArray(parsed.k13KKMs)) { parsed.k13KKMs = []; needsResave = true; }
     if (!Array.isArray(parsed.learningPlans)) { parsed.learningPlans = []; needsResave = true; }
     if (!Array.isArray(parsed.assessmentPlans)) { parsed.assessmentPlans = []; needsResave = true; }
-
-    // Ensure core curriculum data arrays exist and items are sanitized
-    if (!Array.isArray(parsed.cps) || parsed.cps.length === 0) {
-      parsed.cps = [...INITIAL_CP_DATA];
-      needsResave = true;
-    } else {
-      parsed.cps = parsed.cps.map((c) => ({
-        ...c,
-        elements: Array.isArray(c.elements) ? c.elements : [],
-      }));
-    }
-
-    if (!Array.isArray(parsed.tps) || parsed.tps.length === 0) {
-      parsed.tps = [...INITIAL_TP_DATA];
-      needsResave = true;
-    } else {
-      parsed.tps = parsed.tps.map((t) => ({
-        ...t,
-        items: Array.isArray(t.items) ? t.items : [],
-      }));
-    }
-
-    if (!Array.isArray(parsed.atps) || parsed.atps.length === 0) {
-      parsed.atps = [...INITIAL_ATP_DATA];
-      needsResave = true;
-    } else {
-      parsed.atps = parsed.atps.map((a) => ({
-        ...a,
-        items: Array.isArray(a.items) ? a.items : [],
-      }));
-    }
 
     // Auto-migrate: ensure all academicSettings have explicit curriculumType and derived phases
     parsed.academicSettings = parsed.academicSettings.map((setting) => {
@@ -409,11 +299,31 @@ export function loadAppStorage(): AppStorageState {
       return updated;
     });
 
+    // Ensure activeProfileId is valid
+    if (parsed.profiles.length > 0) {
+      if (!parsed.activeProfileId || !parsed.profiles.some((p) => p.id === parsed.activeProfileId)) {
+        parsed.activeProfileId = parsed.profiles[0].id;
+        needsResave = true;
+      }
+    } else {
+      if (parsed.activeProfileId) {
+        parsed.activeProfileId = '';
+        needsResave = true;
+      }
+    }
+
     // Ensure activeWorkspaceId is valid
-    if (!parsed.activeWorkspaceId || !parsed.workspaces.some((w) => w.id === parsed.activeWorkspaceId)) {
-      const currentProfileWs = parsed.workspaces.find((w) => w.profileId === parsed.activeProfileId);
-      parsed.activeWorkspaceId = currentProfileWs ? currentProfileWs.id : parsed.workspaces[0]?.id;
-      needsResave = true;
+    if (parsed.workspaces.length > 0) {
+      if (!parsed.activeWorkspaceId || !parsed.workspaces.some((w) => w.id === parsed.activeWorkspaceId)) {
+        const currentProfileWs = parsed.workspaces.find((w) => w.profileId === parsed.activeProfileId);
+        parsed.activeWorkspaceId = currentProfileWs ? currentProfileWs.id : (parsed.workspaces[0]?.id || '');
+        needsResave = true;
+      }
+    } else {
+      if (parsed.activeWorkspaceId) {
+        parsed.activeWorkspaceId = '';
+        needsResave = true;
+      }
     }
 
     if (needsResave) {
@@ -433,11 +343,11 @@ function migrateV2ToV3(v2Data: any): AppStorageState {
     version: 3,
     activeProfileId: v2Data.activeProfileId || initial.activeProfileId,
     activeWorkspaceId: v2Data.activeWorkspaceId || initial.activeWorkspaceId,
-    profiles: Array.isArray(v2Data.profiles) && v2Data.profiles.length > 0 ? v2Data.profiles : initial.profiles,
+    profiles: Array.isArray(v2Data.profiles) ? v2Data.profiles : initial.profiles,
     schools: Array.isArray(v2Data.schools) && v2Data.schools.length > 0 ? v2Data.schools : initial.schools,
     principalHistories: Array.isArray(v2Data.principalHistories) ? v2Data.principalHistories : [],
-    workspaces: Array.isArray(v2Data.workspaces) && v2Data.workspaces.length > 0 ? v2Data.workspaces : initial.workspaces,
-    academicSettings: Array.isArray(v2Data.academicSettings) && v2Data.academicSettings.length > 0 ? v2Data.academicSettings : initial.academicSettings,
+    workspaces: Array.isArray(v2Data.workspaces) ? v2Data.workspaces : initial.workspaces,
+    academicSettings: Array.isArray(v2Data.academicSettings) ? v2Data.academicSettings : initial.academicSettings,
     cps: Array.isArray(v2Data.cps) ? v2Data.cps : initial.cps,
     cpAnalyses: Array.isArray(v2Data.cpAnalyses) ? v2Data.cpAnalyses : [],
     tps: Array.isArray(v2Data.tps) ? v2Data.tps : initial.tps,
@@ -464,9 +374,9 @@ function migrateV2ToV3(v2Data: any): AppStorageState {
 
 function migrateV1ToV2(v1Data: any): AppStorageState {
   const initial = getInitialState();
-  const profiles: TeacherProfile[] = Array.isArray(v1Data.profiles) && v1Data.profiles.length > 0 ? v1Data.profiles : initial.profiles;
+  const profiles: TeacherProfile[] = Array.isArray(v1Data.profiles) ? v1Data.profiles : initial.profiles;
   const schools: SchoolData[] = Array.isArray(v1Data.schools) && v1Data.schools.length > 0 ? v1Data.schools : initial.schools;
-  const academicSettings: AcademicSetting[] = Array.isArray(v1Data.academicSettings) && v1Data.academicSettings.length > 0 ? v1Data.academicSettings : initial.academicSettings;
+  const academicSettings: AcademicSetting[] = Array.isArray(v1Data.academicSettings) ? v1Data.academicSettings : initial.academicSettings;
   const cps: CPData[] = Array.isArray(v1Data.cps) ? v1Data.cps : initial.cps;
   const tps: TPData[] = Array.isArray(v1Data.tps) ? v1Data.tps : initial.tps;
   const atps: ATPData[] = Array.isArray(v1Data.atps) ? v1Data.atps : initial.atps;
@@ -486,13 +396,13 @@ function migrateV1ToV2(v1Data: any): AppStorageState {
     workspaces.push(ws);
   });
 
-  const activeProfileId = v1Data.activeProfileId || profiles[0].id;
+  const activeProfileId = v1Data.activeProfileId || (profiles[0]?.id || '');
   const activeWs = workspaces.find((w) => w.profileId === activeProfileId) || workspaces[0];
 
   return {
     version: 2,
     activeProfileId,
-    activeWorkspaceId: activeWs?.id,
+    activeWorkspaceId: activeWs?.id || '',
     profiles,
     schools,
     workspaces,
@@ -567,9 +477,112 @@ export function setActiveWorkspaceId(workspaceId: string): void {
  * Retrieves the full isolated data tree for a given profile and active workspace.
  * Guarantee: Data from Workspace SD A will NEVER bleed into Workspace SD B.
  */
-export function getProfileWorkspace(profileId: string, workspaceId?: string): ProfileWorkspaceData {
+export function getProfileWorkspace(profileId?: string, workspaceId?: string): ProfileWorkspaceData {
   const state = loadAppStorage();
-  const profile = state.profiles.find((p) => p.id === profileId) || state.profiles[0] || INITIAL_PROFILES[0];
+  const profile = (profileId ? state.profiles.find((p) => p.id === profileId) : undefined) || state.profiles[0];
+
+  if (!profile) {
+    const emptySchool: SchoolData = state.schools[0] || { ...INITIAL_SCHOOL };
+    const emptyProfile: TeacherProfile = {
+      id: '',
+      name: '',
+      nip: '',
+      nuptk: '',
+      status: 'PNS',
+      defaultSubject: '',
+      defaultLevel: 'SD',
+      schoolId: emptySchool.id,
+      createdAt: '',
+      updatedAt: '',
+    };
+    const emptyWorkspace: AdministrationWorkspace = {
+      id: '',
+      profileId: '',
+      schoolId: emptySchool.id,
+      academicSettingId: '',
+      name: '',
+      createdAt: '',
+      updatedAt: '',
+    };
+    const emptyAcademicSetting: AcademicSetting = {
+      id: '',
+      profileId: '',
+      curriculum: 'Kurikulum Merdeka',
+      academicYear: '2026/2027',
+      semester: '1 (Ganjil)',
+      level: 'SD',
+      grade: 'Kelas 1',
+      phase: 'Fase A',
+      subject: '',
+      totalHoursPerWeek: 0,
+      updatedAt: '',
+    };
+    const emptyContext = buildActiveContext(emptyProfile, emptySchool, emptyAcademicSetting);
+    const emptyCp: CPData = {
+      id: '',
+      academicSettingId: '',
+      generalDescription: '',
+      elements: [],
+      updatedAt: '',
+    };
+    const emptyTp: TPData = {
+      id: '',
+      academicSettingId: '',
+      items: [],
+      updatedAt: '',
+    };
+    const emptyAtp: ATPData = {
+      id: '',
+      academicSettingId: '',
+      rationale: '',
+      items: [],
+      totalJP: 0,
+      updatedAt: '',
+    };
+
+    return {
+      profile: emptyProfile,
+      school: emptySchool,
+      schools: state.schools || [{ ...INITIAL_SCHOOL }],
+      teacherSchoolAssignments: [],
+      assignedSchools: [emptySchool],
+      principalHistories: state.principalHistories || [],
+      workspace: emptyWorkspace,
+      academicSetting: emptyAcademicSetting,
+      context: emptyContext,
+      cp: emptyCp,
+      cpAnalysis: undefined,
+      tp: emptyTp,
+      atp: emptyAtp,
+      documents: [],
+      allWorkspaces: [],
+      allWorkspacesForProfile: [],
+      activeProfile: emptyProfile,
+      activeSchool: emptySchool,
+      activeWorkspace: emptyWorkspace,
+      activeAcademicSetting: emptyAcademicSetting,
+      activeContext: emptyContext,
+      activeCP: emptyCp,
+      activeTP: emptyTp,
+      activeATP: emptyAtp,
+      students: [],
+      calendar: undefined,
+      calendarDays: [],
+      timeAllocations: [],
+      attendanceSessions: [],
+      attendanceRecords: [],
+      assessmentCriteria: [],
+      assessments: [],
+      assessmentResults: [],
+      remedials: [],
+      enrichments: [],
+      k13Analysis: undefined,
+      k13KKM: undefined,
+      learningPlans: [],
+      assessmentPlans: [],
+      assessmentPackages: [],
+    };
+  }
 
   // 1 Profil Guru = 1 Sekolah Utama (master data SchoolData)
   let school = (profile.schoolId ? state.schools.find((s) => s.id === profile.schoolId) : undefined)
@@ -602,7 +615,7 @@ export function getProfileWorkspace(profileId: string, workspaceId?: string): Pr
   }
 
   // If no workspace exists for this profile, bootstrap one automatically
-  if (!targetWs) {
+  if (profile.id && !targetWs) {
     const newSettingId = `acad-${profile.id}-${Date.now()}`;
     const derivedPhase = getPhaseFromGrade(profile.defaultLevel || 'SD', 'Kelas 1');
     const newSetting: AcademicSetting = {
@@ -1299,14 +1312,75 @@ export function saveProfile(profile: TeacherProfile): void {
 
 export function deleteProfile(profileId: string): void {
   const current = loadAppStorage();
-  if (current.profiles.length <= 1) return;
-  current.profiles = current.profiles.filter((p) => p.id !== profileId);
-  current.workspaces = current.workspaces.filter((w) => w.profileId !== profileId);
+  const targetProfile = current.profiles.find((p) => p.id === profileId);
+  if (!targetProfile) return;
 
+  // 1. Filter out the profile
+  current.profiles = current.profiles.filter((p) => p.id !== profileId);
+
+  // 2. Identify all associated workspaces and academic settings
+  const targetWorkspaces = current.workspaces.filter((w) => w.profileId === profileId);
+  const targetWsIds = new Set(targetWorkspaces.map((w) => w.id));
+  const targetAcadSettingIds = new Set(
+    current.academicSettings
+      .filter((a) => a.profileId === profileId || targetWsIds.has(`ws-${a.id}`) || targetWorkspaces.some((w) => w.academicSettingId === a.id))
+      .map((a) => a.id)
+  );
+
+  // 3. Cascading cleanup of all derived child records
+  current.workspaces = current.workspaces.filter((w) => w.profileId !== profileId);
+  current.academicSettings = current.academicSettings.filter((a) => !targetAcadSettingIds.has(a.id));
+  current.cps = (current.cps || []).filter((c) => !targetAcadSettingIds.has(c.academicSettingId));
+  current.cpAnalyses = (current.cpAnalyses || []).filter((ca) => !targetAcadSettingIds.has(ca.academicSettingId));
+  current.tps = (current.tps || []).filter((t) => !targetAcadSettingIds.has(t.academicSettingId));
+  current.atps = (current.atps || []).filter((a) => !targetAcadSettingIds.has(a.academicSettingId));
+  current.documents = (current.documents || []).filter(
+    (d) => (!d.workspaceId || !targetWsIds.has(d.workspaceId)) && (!d.academicSettingId || !targetAcadSettingIds.has(d.academicSettingId))
+  );
+  current.students = (current.students || []).filter((s) => !targetAcadSettingIds.has(s.academicSettingId));
+
+  const targetCalendarIds = new Set(
+    (current.academicCalendars || []).filter((c) => targetAcadSettingIds.has(c.academicSettingId)).map((c) => c.id)
+  );
+  current.academicCalendars = (current.academicCalendars || []).filter((c) => !targetAcadSettingIds.has(c.academicSettingId));
+  current.effectiveDays = (current.effectiveDays || []).filter((e) => !targetCalendarIds.has(e.academicCalendarId));
+
+  current.timeAllocations = (current.timeAllocations || []).filter((t) => !targetAcadSettingIds.has(t.academicSettingId));
+
+  const targetSessionIds = new Set(
+    (current.attendanceSessions || []).filter((s) => targetAcadSettingIds.has(s.academicSettingId)).map((s) => s.id)
+  );
+  current.attendanceSessions = (current.attendanceSessions || []).filter((s) => !targetAcadSettingIds.has(s.academicSettingId));
+  current.attendanceRecords = (current.attendanceRecords || []).filter((a) => !targetSessionIds.has(a.sessionId));
+
+  current.assessmentCriteria = (current.assessmentCriteria || []).filter((c) => !targetAcadSettingIds.has(c.academicSettingId));
+
+  const targetAssessmentIds = new Set(
+    (current.assessments || []).filter((a) => targetAcadSettingIds.has(a.academicSettingId)).map((a) => a.id)
+  );
+  current.assessments = (current.assessments || []).filter((a) => !targetAcadSettingIds.has(a.academicSettingId));
+  current.assessmentResults = (current.assessmentResults || []).filter((a) => !targetAssessmentIds.has(a.assessmentId));
+
+  current.remedialRecords = (current.remedialRecords || []).filter((r) => !targetAcadSettingIds.has(r.academicSettingId));
+  current.enrichmentRecords = (current.enrichmentRecords || []).filter((e) => !targetAcadSettingIds.has(e.academicSettingId));
+  current.k13Analyses = (current.k13Analyses || []).filter((k) => !targetAcadSettingIds.has(k.academicSettingId));
+  current.k13KKMs = (current.k13KKMs || []).filter((k) => !targetAcadSettingIds.has(k.academicSettingId));
+  current.learningPlans = (current.learningPlans || []).filter((l) => !targetAcadSettingIds.has(l.academicSettingId));
+  current.assessmentPlans = (current.assessmentPlans || []).filter((a) => !targetAcadSettingIds.has(a.academicSettingId));
+  current.assessmentPackages = (current.assessmentPackages || []).filter((a) => !targetAcadSettingIds.has(a.academicSettingId));
+
+  // Note: current.schools is preserved! Master reusable SchoolData is NOT deleted.
+
+  // 4. Update active profile & workspace pointers
   if (current.activeProfileId === profileId) {
-    current.activeProfileId = current.profiles[0].id;
-    const firstWs = current.workspaces.find((w) => w.profileId === current.activeProfileId);
-    current.activeWorkspaceId = firstWs?.id;
+    if (current.profiles.length > 0) {
+      current.activeProfileId = current.profiles[0].id;
+      const firstWs = current.workspaces.find((w) => w.profileId === current.activeProfileId);
+      current.activeWorkspaceId = firstWs?.id || '';
+    } else {
+      current.activeProfileId = '';
+      current.activeWorkspaceId = '';
+    }
   }
   saveAppStorage(current);
 }

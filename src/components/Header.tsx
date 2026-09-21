@@ -89,11 +89,15 @@ export const Header: React.FC<HeaderProps> = ({
                 className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-hidden py-1 px-1.5 cursor-pointer max-w-[120px] sm:max-w-[150px] truncate"
                 title="Ganti Profil Guru yang Sedang Aktif"
               >
-                {safeProfiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
+                {safeProfiles.length === 0 ? (
+                  <option value="">Belum Ada Profil</option>
+                ) : (
+                  safeProfiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 
@@ -118,11 +122,15 @@ export const Header: React.FC<HeaderProps> = ({
                 className="bg-transparent text-xs font-bold text-blue-900 focus:outline-hidden py-1 px-1.5 cursor-pointer max-w-[140px] sm:max-w-[210px] truncate"
                 title="Pilih Administrasi Pembelajaran Aktif"
               >
-                {safeWorkspaces.map((ws) => (
-                  <option key={ws.id} value={ws.id}>
-                    {ws.name}
-                  </option>
-                ))}
+                {safeWorkspaces.length === 0 ? (
+                  <option value="">Belum Ada Administrasi</option>
+                ) : (
+                  safeWorkspaces.map((ws) => (
+                    <option key={ws.id} value={ws.id}>
+                      {ws.name}
+                    </option>
+                  ))
+                )}
               </select>
               <button
                 id="btn-header-new-workspace"

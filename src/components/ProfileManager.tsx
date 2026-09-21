@@ -75,7 +75,21 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
 
   // Profile Modal State
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [profileForm, setProfileForm] = useState<TeacherProfile>({ ...activeProfile });
+  const [profileForm, setProfileForm] = useState<TeacherProfile>(() => {
+    if (activeProfile) return { ...activeProfile };
+    return {
+      id: `prof-${Date.now()}`,
+      name: '',
+      nip: '',
+      nuptk: '',
+      status: 'PNS',
+      defaultSubject: 'Bahasa Indonesia',
+      defaultLevel: 'SD',
+      schoolId: activeSchool?.id || schools[0]?.id || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  });
 
   // School Modal State (Explicit Create vs Edit Mode)
   const [isEditingSchool, setIsEditingSchool] = useState(false);
@@ -90,9 +104,24 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
 
   useEffect(() => {
     if (!isEditingProfile) {
-      setProfileForm({ ...activeProfile });
+      if (activeProfile) {
+        setProfileForm({ ...activeProfile });
+      } else {
+        setProfileForm({
+          id: `prof-${Date.now()}`,
+          name: '',
+          nip: '',
+          nuptk: '',
+          status: 'PNS',
+          defaultSubject: 'Bahasa Indonesia',
+          defaultLevel: 'SD',
+          schoolId: activeSchool?.id || schools[0]?.id || '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
     }
-  }, [activeProfile?.id, isEditingProfile]);
+  }, [activeProfile?.id, isEditingProfile, activeSchool?.id, schools]);
 
   useEffect(() => {
     if (!isEditingSchool) {
@@ -236,7 +265,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
       status: 'PNS',
       defaultSubject: 'Bahasa Indonesia',
       defaultLevel: 'SD',
-      schoolId: activeSchool.id,
+      schoolId: activeSchool?.id || schools[0]?.id || '',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -411,63 +440,95 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
           </div>
 
           <div className="space-y-3">
-            {profiles.map((p) => {
-              const isSelected = p.id === activeProfileId;
-              return (
-                <div
-                  key={p.id}
-                  id={`profile-card-${p.id}`}
-                  onClick={() => onSelectProfile(p.id)}
-                  className={`p-4 rounded-2xl border transition-all duration-150 cursor-pointer ${
-                    isSelected
-                      ? 'bg-blue-50/70 border-blue-600/80 ring-2 ring-blue-600/20 shadow-xs'
-                      : 'bg-white hover:bg-slate-50 border-slate-200/80 shadow-xs'
-                  }`}
+            {profiles.length === 0 ? (
+              <div id="empty-profiles-banner" className="bg-white rounded-2xl p-8 border-2 border-dashed border-slate-200 text-center space-y-4 shadow-xs">
+                <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-700 mx-auto flex items-center justify-center">
+                  <User className="w-7 h-7" />
+                </div>
+                <div className="max-w-md mx-auto space-y-1.5">
+                  <h5 className="font-bold text-slate-900 text-base">Belum Ada Profil Guru</h5>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Mulai dengan menambahkan profil guru baru. Profil ini akan menjadi acuan data pengajar, jenjang, mata pelajaran, dan sekolah utama dalam pembuatan seluruh dokumen administrasi.
+                  </p>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-3.5 max-w-md mx-auto text-left border border-slate-200/60 space-y-2 text-xs">
+                  <div className="font-semibold text-slate-700 flex items-center gap-1.5">
+                    <Info className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Langkah Mudah Memulai:</span>
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1 text-slate-600 text-[11px] pl-1">
+                    <li>Klik <strong>Tambah Profil Guru</strong> dan isi identitas pengajar.</li>
+                    <li>Pilih atau daftarkan <strong>Sekolah Utama</strong> yang menjadi naungan.</li>
+                    <li>Lanjutkan ke tahap <strong>02 Data Pembelajaran</strong> untuk menyusun administrasi.</li>
+                  </ol>
+                </div>
+                <button
+                  id="btn-add-first-profile"
+                  type="button"
+                  onClick={handleOpenAddProfile}
+                  className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3.5">
-                      <div
-                        className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-base shrink-0 ${
-                          isSelected
-                            ? 'bg-blue-700 text-white shadow-sm'
-                            : 'bg-slate-100 text-slate-700'
-                        }`}
-                      >
-                        {p.name.charAt(0).toUpperCase() || 'G'}
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h5 className="font-bold text-slate-900 text-sm">{p.name}</h5>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-800">
-                            {p.status}
-                          </span>
-                          {isSelected && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                              <Check className="w-3 h-3 text-emerald-600" /> Aktif
-                            </span>
-                          )}
+                  <Plus className="w-4 h-4" />
+                  <span>Tambah Profil Guru Pertama</span>
+                </button>
+              </div>
+            ) : (
+              profiles.map((p) => {
+                const isSelected = p.id === activeProfileId;
+                return (
+                  <div
+                    key={p.id}
+                    id={`profile-card-${p.id}`}
+                    onClick={() => onSelectProfile(p.id)}
+                    className={`p-4 rounded-2xl border transition-all duration-150 cursor-pointer ${
+                      isSelected
+                        ? 'bg-blue-50/70 border-blue-600/80 ring-2 ring-blue-600/20 shadow-xs'
+                        : 'bg-white hover:bg-slate-50 border-slate-200/80 shadow-xs'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3.5">
+                        <div
+                          className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-base shrink-0 ${
+                            isSelected
+                              ? 'bg-blue-700 text-white shadow-sm'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          {p.name.charAt(0).toUpperCase() || 'G'}
                         </div>
-                        <div className="text-xs text-slate-500 space-y-0.5">
-                          <div>NIP: {p.nip || 'Belum diisi'}</div>
-                          {p.nuptk && <div>NUPTK: {p.nuptk}</div>}
-                          <div className="text-slate-600 font-medium pt-0.5">
-                            Jenjang: {p.defaultLevel}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h5 className="font-bold text-slate-900 text-sm">{p.name}</h5>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-800">
+                              {p.status}
+                            </span>
+                            {isSelected && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                <Check className="w-3 h-3 text-emerald-600" /> Aktif
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-500 space-y-0.5">
+                            <div>NIP: {p.nip || 'Belum diisi'}</div>
+                            {p.nuptk && <div>NUPTK: {p.nuptk}</div>}
+                            <div className="text-slate-600 font-medium pt-0.5">
+                              Jenjang: {p.defaultLevel}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        id={`btn-edit-profile-${p.id}`}
-                        onClick={() => handleOpenEditProfile(p)}
-                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
-                        title="Edit Profil Guru"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      {profiles.length > 1 && (
+                      {/* Actions */}
+                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          id={`btn-edit-profile-${p.id}`}
+                          onClick={() => handleOpenEditProfile(p)}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
+                          title="Edit Profil Guru"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
                         <button
                           id={`btn-delete-profile-${p.id}`}
                           onClick={() => {
@@ -480,12 +541,12 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
-                      )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -577,34 +638,36 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
               </div>
 
               {/* Primary School Selection for Active Profile */}
-              <div className="pt-3 border-t border-slate-100 space-y-1.5 text-xs">
-                <label htmlFor="select-profile-primary-school" className="block text-slate-700 font-bold uppercase tracking-wider text-[11px]">
-                  Sekolah Utama Profil:
-                </label>
-                <select
-                  id="select-profile-primary-school"
-                  value={activeProfile.schoolId || activeSchool.id}
-                  onChange={(e) => {
-                    if (e.target.value && e.target.value !== activeProfile.schoolId) {
-                      onSaveProfile({
-                        ...activeProfile,
-                        schoolId: e.target.value,
-                      });
-                    }
-                  }}
-                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-semibold focus:outline-hidden focus:ring-2 focus:ring-blue-600 transition cursor-pointer"
-                  title="Pilih Sekolah Utama untuk Profil Guru Aktif"
-                >
-                  {schools.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} {s.npsn ? `(NPSN: ${s.npsn})` : ''} {s.id === (activeProfile.schoolId || activeSchool.id) ? '✓ Sekolah Utama' : ''}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-slate-500">
-                  1 Profil Guru = 1 Sekolah Utama. Mengubah pilihan ini otomatis menyinkronkan seluruh lembar administrasi guru.
-                </p>
-              </div>
+              {activeProfile && (
+                <div className="pt-3 border-t border-slate-100 space-y-1.5 text-xs">
+                  <label htmlFor="select-profile-primary-school" className="block text-slate-700 font-bold uppercase tracking-wider text-[11px]">
+                    Sekolah Utama Profil:
+                  </label>
+                  <select
+                    id="select-profile-primary-school"
+                    value={activeProfile.schoolId || activeSchool.id}
+                    onChange={(e) => {
+                      if (e.target.value && e.target.value !== activeProfile.schoolId) {
+                        onSaveProfile({
+                          ...activeProfile,
+                          schoolId: e.target.value,
+                        });
+                      }
+                    }}
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 hover:bg-white focus:bg-white text-slate-900 font-semibold focus:outline-hidden focus:ring-2 focus:ring-blue-600 transition cursor-pointer"
+                    title="Pilih Sekolah Utama untuk Profil Guru Aktif"
+                  >
+                    {schools.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} {s.npsn ? `(NPSN: ${s.npsn})` : ''} {s.id === (activeProfile.schoolId || activeSchool.id) ? '✓ Sekolah Utama' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-500">
+                    1 Profil Guru = 1 Sekolah Utama. Mengubah pilihan ini otomatis menyinkronkan seluruh lembar administrasi guru.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -744,10 +807,14 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
           {/* Next step CTA */}
           <button
             id="btn-next-to-academic"
-            onClick={onNextStep}
-            className="w-full flex items-center justify-center gap-2 bg-blue-900 hover:bg-blue-950 text-white py-3 px-4 rounded-xl text-sm font-semibold shadow-sm transition cursor-pointer"
+            onClick={profiles.length > 0 ? onNextStep : handleOpenAddProfile}
+            className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-semibold shadow-xs transition cursor-pointer ${
+              profiles.length > 0
+                ? 'bg-blue-900 hover:bg-blue-950 text-white'
+                : 'bg-blue-700 hover:bg-blue-800 text-white'
+            }`}
           >
-            <span>Lanjut ke 02 Data Pembelajaran</span>
+            <span>{profiles.length > 0 ? 'Lanjut ke 02 Data Pembelajaran' : 'Tambah Profil Guru untuk Melanjutkan'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
