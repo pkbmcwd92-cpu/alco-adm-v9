@@ -44,7 +44,7 @@ console.log('--- STARTING CALENDAR WORKFLOW REFACTOR & EXACT LEGAL SOURCE TESTS 
   );
   assert(source2025.verificationState === 'VERIFIED', '2025 verificationState must be VERIFIED');
 
-  // 2026
+  // 2026 - Exact Setneg Canonical URL
   const source2026 = OFFICIAL_NATIONAL_HOLIDAY_SOURCES[2026];
   assert(Boolean(source2026), '2026 Official National Holiday Source must exist');
   assert(
@@ -60,8 +60,12 @@ console.log('--- STARTING CALENDAR WORKFLOW REFACTOR & EXACT LEGAL SOURCE TESTS 
     '2026 publicationDate must be 2025-09-19'
   );
   assert(
-    source2026.sourceUrl === 'https://www.setneg.go.id/baca/index/pemerintah_tetapkan_hari_libur_nasional_dan_cuti_bersama_tahun_2026',
-    '2026 sourceUrl must be exact official government publication URL'
+    source2026.sourceUrl === 'https://www.setneg.go.id/baca/index/inilah_skb_3_menteri_libur_nasional_dan_cuti_bersama_2026',
+    '2026 sourceUrl must equal exact Setneg page URL'
+  );
+  assert(
+    source2026.sourceUrl !== 'https://www.setneg.go.id/baca/index/pemerintah_tetapkan_hari_libur_nasional_dan_cuti_bersama_tahun_2026',
+    '2026 old URL must not be used'
   );
   assert(
     !source2026.sourceUrl.includes('jdih.kemenag.go.id/dokumen/skb-3-menteri-libur-nasional-dan-cuti-bersama'),
@@ -72,7 +76,7 @@ console.log('--- STARTING CALENDAR WORKFLOW REFACTOR & EXACT LEGAL SOURCE TESTS 
     '2026 verificationState must be VERIFIED'
   );
 
-  // 2027
+  // 2027 - Exact Setneg Canonical URL
   const source2027 = OFFICIAL_NATIONAL_HOLIDAY_SOURCES[2027];
   assert(Boolean(source2027), '2027 Official National Holiday Source must exist');
   assert(
@@ -88,8 +92,12 @@ console.log('--- STARTING CALENDAR WORKFLOW REFACTOR & EXACT LEGAL SOURCE TESTS 
     '2027 publicationDate must be 2026-09-15'
   );
   assert(
-    source2027.sourceUrl === 'https://www.kemenkopmk.go.id/skb-3-menteri-libur-nasional-dan-cuti-bersama-2027',
-    '2027 sourceUrl must be exact official government publication URL'
+    source2027.sourceUrl === 'https://setneg.go.id/baca/index/inilah_skb_3_menteri_libur_nasional_dan_cuti_bersama_2027',
+    '2027 sourceUrl must equal exact Setneg page URL'
+  );
+  assert(
+    source2027.sourceUrl !== 'https://www.kemenkopmk.go.id/skb-3-menteri-libur-nasional-dan-cuti-bersama-2027',
+    '2027 old URL must not be used'
   );
   assert(
     !source2027.sourceUrl.includes('jdih.kemenag.go.id/dokumen/skb-3-menteri-libur-nasional-dan-cuti-bersama'),
@@ -147,6 +155,10 @@ console.log('--- STARTING CALENDAR WORKFLOW REFACTOR & EXACT LEGAL SOURCE TESTS 
     res.calendar!.nationalProvenances?.length === 1,
     'Semester 1 only has 2026 national holidays, so nationalProvenances length must be 1'
   );
+  assert(
+    res.calendar!.nationalProvenances![0].sourceUrl === OFFICIAL_NATIONAL_HOLIDAY_SOURCES[2026].sourceUrl,
+    'nationalProvenances[0] sourceUrl must match canonical 2026 URL'
+  );
 
   // Check HUT RI 2026-08-17
   const hutRi = res.days.find(d => d.date === '2026-08-17');
@@ -186,6 +198,10 @@ console.log('--- STARTING CALENDAR WORKFLOW REFACTOR & EXACT LEGAL SOURCE TESTS 
     resSem2.calendar!.nationalProvenances?.length === 1,
     'Semester 2 only has 2027 national holidays, so nationalProvenances length must be 1'
   );
+  assert(
+    resSem2.calendar!.nationalProvenances![0].sourceUrl === OFFICIAL_NATIONAL_HOLIDAY_SOURCES[2027].sourceUrl,
+    'nationalProvenances[0] sourceUrl must match canonical 2027 URL'
+  );
 
   // Check Isra Mikraj 2027-01-05
   const israMikraj2027 = resSem2.days.find(d => d.date === '2027-01-05');
@@ -212,7 +228,7 @@ console.log('--- STARTING CALENDAR WORKFLOW REFACTOR & EXACT LEGAL SOURCE TESTS 
     sourceType: 'NATIONAL_HOLIDAY_OVERLAY',
     sourceName: 'SKB 3 Menteri',
     sourceAuthority: 'Kemenag, Kemenaker, PANRB',
-    sourceUrl: 'https://www.setneg.go.id/baca/index/pemerintah_tetapkan_hari_libur_nasional_dan_cuti_bersama_tahun_2026',
+    sourceUrl: 'https://www.setneg.go.id/baca/index/inilah_skb_3_menteri_libur_nasional_dan_cuti_bersama_2026',
     region: 'Nasional',
     academicYear: '2026/2027',
     documentNumber: 'SKB No. 1497/2025',
