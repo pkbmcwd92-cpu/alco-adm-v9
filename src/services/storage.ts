@@ -45,6 +45,7 @@ import {
   buildActiveContext,
   getPhaseFromGrade,
 } from '../data/curriculumDefaults';
+import { resolveOfficialCalendar } from './calendarResolver';
 import saveAs from 'file-saver';
 
 const STORAGE_KEY = 'administrasi_guru_ai_storage_v3';
@@ -64,7 +65,25 @@ export const DEFAULT_SAMPLE_STUDENTS: { name: string; gender: 'L' | 'P'; nisn: s
   { name: 'Hafizah Nur Aini', gender: 'P', nisn: '0123456790' },
 ];
 
-export function createDefaultCalendarForSetting(setting: AcademicSetting): { calendar: AcademicCalendar; days: CalendarDay[] } {
+export function createDefaultCalendarForSetting(
+  setting: AcademicSetting,
+  school?: SchoolData
+): { calendar: AcademicCalendar; days: CalendarDay[] } {
+  if (school && school.province && setting.academicYear) {
+    const resolved = resolveOfficialCalendar({
+      province: school.province,
+      regency: school.regency,
+      academicYear: setting.academicYear,
+      semester: setting.semester || '1',
+      academicSettingId: setting.id,
+      calendarId: `cal-${setting.id}`,
+      subjectWeeklyJP: setting.subjectWeeklyJP ? Number(setting.subjectWeeklyJP) : (setting.totalHoursPerWeek ? Number(setting.totalHoursPerWeek) : null),
+    });
+    if (resolved.isResolved && resolved.calendar) {
+      return { calendar: resolved.calendar, days: resolved.days };
+    }
+  }
+
   const calId = `cal-${setting.id}`;
   const calendar: AcademicCalendar = {
     id: calId,
@@ -75,6 +94,7 @@ export function createDefaultCalendarForSetting(setting: AcademicSetting): { cal
     endDate: '',
     schoolDaysPerWeek: null,
     sourceType: 'UNVERIFIED',
+    workflowStatus: 'UNRESOLVED',
     jpPerWeek: setting.subjectWeeklyJP ? Number(setting.subjectWeeklyJP) : (setting.totalHoursPerWeek ? Number(setting.totalHoursPerWeek) : null),
     notes: '',
     updatedAt: new Date().toISOString(),
@@ -739,7 +759,7 @@ export function getProfileWorkspace(profileId: string, workspaceId?: string): Pr
   let calendar = (state.academicCalendars || []).find((c) => c.academicSettingId === academicSetting!.id);
   let calendarDays = (state.effectiveDays || []).filter((d) => d.academicCalendarId === calendar?.id);
   if (!calendar) {
-    const defCal = createDefaultCalendarForSetting(academicSetting!);
+    const defCal = createDefaultCalendarForSetting(academicSetting!, school);
     calendar = defCal.calendar;
     calendarDays = defCal.days;
     state.academicCalendars = [...(state.academicCalendars || []), calendar];

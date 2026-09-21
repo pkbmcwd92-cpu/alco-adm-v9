@@ -1,41 +1,58 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
-  Calendar as CalendarIcon,
-  Clock,
-  Plus,
-  Trash2,
-  FileDown,
-  AlertTriangle,
-  CheckCircle2,
-  Save,
-  Layers,
-  CalendarCheck,
-  ShieldCheck,
-  RotateCcw,
-  BookOpen,
-  Info,
-} from 'lucide-react';
-import {
+  SchoolData,
+  TeacherProfile,
+  AcademicSetting,
   AcademicCalendar,
   CalendarDay,
   TimeAllocation,
-  AcademicSetting,
-  TeacherProfile,
-  SchoolData,
   ATPData,
   K13Analysis,
   CalendarSourceType,
+  CalendarWorkflowStatus,
 } from '../../types';
-import { generateKalenderAkademik, generateAlokasiWaktu } from '../../services/documentEngine';
 import {
-  calculateAvailableJP,
   calculateEffectiveDays,
   calculateEffectiveWeeks,
+  calculateAvailableJP,
   getSubjectJP,
   resolveSemester,
 } from '../../services/jpEngine';
+import {
+  resolveOfficialCalendar,
+  applyManualCalendarOverride,
+  confirmCalendarWorkflow,
+  resetCalendarToOfficial,
+  getAvailableProvinces,
+  getAvailableAcademicYears,
+} from '../../services/calendarResolver';
+import {
+  generateKalenderAkademik,
+  generateAlokasiWaktu,
+} from '../../services/documentEngine';
+import {
+  Clock,
+  Calendar as CalendarIcon,
+  CalendarCheck,
+  CalendarDays,
+  Layers,
+  Plus,
+  Trash2,
+  Save,
+  FileDown,
+  AlertTriangle,
+  CheckCircle2,
+  RotateCcw,
+  Info,
+  ShieldCheck,
+  Sparkles,
+  RefreshCw,
+  Check,
+  Edit3,
+  ExternalLink,
+} from 'lucide-react';
 
-interface TimePlanningManagerProps {
+export interface TimePlanningManagerProps {
   school: SchoolData;
   profile: TeacherProfile;
   academicSetting: AcademicSetting;
@@ -73,29 +90,43 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
     });
   }, [academicSetting]);
 
-  // Calendar form state - strictly no fabricated defaults
+  // Workflow State
+  const [workflowStatus, setWorkflowStatus] = useState<CalendarWorkflowStatus>(
+    calendar?.workflowStatus || (calendar?.startDate && calendar?.endDate ? 'AUTO_RESOLVED' : 'UNRESOLVED')
+  );
+
+  // Region & Academic Settings for Auto-Resolution
+  const [selectedProvince, setSelectedProvince] = useState<string>(
+    calendar?.sourceRegion || school.province || 'Jawa Barat'
+  );
   const [academicYear, setAcademicYear] = useState<string>(
-    calendar?.academicYear || academicSetting.academicYear || ''
+    calendar?.academicYear || academicSetting.academicYear || '2026/2027'
   );
   const [semester, setSemester] = useState<'1' | '2' | null>(
-    resolveSemester(calendar?.semester, academicSetting.semester)
+    resolveSemester(calendar?.semester, academicSetting.semester) || '1'
   );
+
+  // Calendar dates & structure
   const [startDate, setStartDate] = useState<string>(calendar?.startDate || '');
   const [endDate, setEndDate] = useState<string>(calendar?.endDate || '');
   const [schoolDaysPerWeek, setSchoolDaysPerWeek] = useState<number | null>(
     calendar?.schoolDaysPerWeek === 5 || calendar?.schoolDaysPerWeek === 6
       ? calendar.schoolDaysPerWeek
-      : null
+      : 5
   );
 
-  // Provenance state
+  // Provenance & Authority
   const [sourceType, setSourceType] = useState<CalendarSourceType>(
-    calendar?.sourceType || 'MANUAL'
+    calendar?.sourceType || 'REGIONAL_EDUCATION_CALENDAR'
   );
   const [sourceName, setSourceName] = useState<string>(calendar?.sourceName || '');
-  const [sourceRegion, setSourceRegion] = useState<string>(calendar?.sourceRegion || '');
+  const [sourceAuthority, setSourceAuthority] = useState<string>(calendar?.sourceAuthority || '');
+  const [sourceDocumentNumber, setSourceDocumentNumber] = useState<string>(calendar?.sourceDocumentNumber || '');
+  const [sourceUrl, setSourceUrl] = useState<string>(calendar?.sourceUrl || '');
+  const [isOverridden, setIsOverridden] = useState<boolean>(calendar?.isOverridden || false);
+  const [overrideReason, setOverrideReason] = useState<string>(calendar?.overrideReason || '');
 
-  // JP per week: initial value from calendar, setting, or official rule (no fallback to 4)
+  // JP per week
   const initialJP =
     calendar?.jpPerWeek !== undefined && calendar?.jpPerWeek !== null
       ? calendar.jpPerWeek
@@ -124,15 +155,26 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
   const [allocations, setAllocations] = useState<TimeAllocation[]>(timeAllocations || []);
   const [isExporting, setIsExporting] = useState<string | null>(null);
   const [saveNotification, setSaveNotification] = useState<string | null>(null);
+  const [resolutionMessage, setResolutionMessage] = useState<string | null>(null);
+
+  // Auto-resolve on initialization if calendar is empty or unconfigured
+  useEffect(() => {
+    if ((!calendar || !calendar.startDate || !calendar.endDate) && school.province && academicSetting.academicYear) {
+      handleAutoResolve(false);
+    }
+  }, [school.province, academicSetting.academicYear, academicSetting.semester]);
 
   // Exact Effective Days & Weeks calculation from JP Engine
   const effectiveResult = useMemo(() => {
     if (!startDate || !endDate || !schoolDaysPerWeek) {
-      return calculateEffectiveDays({
-        startDate: '',
-        endDate: '',
-        schoolDaysPerWeek: undefined,
-      }, []);
+      return calculateEffectiveDays(
+        {
+          startDate: '',
+          endDate: '',
+          schoolDaysPerWeek: undefined,
+        },
+        []
+      );
     }
     return calculateEffectiveDays(
       {
@@ -153,11 +195,12 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
   const effectiveWeeks =
     effectiveWeeksResult.status === 'RESOLVED' ? effectiveWeeksResult.effectiveWeeksRounded : null;
 
-  // Compute available JP using the official formula: JP/minggu * minggu efektif
+  // Compute available JP
   const availableJPResult = useMemo(() => {
     return calculateAvailableJP({
       subjectWeeklyJP: jpPerWeek,
-      effectiveLearningDays: effectiveResult.status === 'RESOLVED' ? effectiveResult.effectiveLearningDays : null,
+      effectiveLearningDays:
+        effectiveResult.status === 'RESOLVED' ? effectiveResult.effectiveLearningDays : null,
       schoolDaysPerWeek,
       calendarStatus: effectiveResult.status,
       effectiveDayStatus: effectiveResult.status,
@@ -181,7 +224,7 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
   const totalAvailableJP =
     availableJPResult.status === 'RESOLVED' ? availableJPResult.availableJP : null;
 
-  // Planned JP calculation from concrete item allocations or explicit item JP
+  // Planned JP calculation
   const totalPlannedJP = useMemo(() => {
     if (isK13Curriculum) {
       return (k13Analysis?.items || []).reduce((acc, item) => {
@@ -220,32 +263,99 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
     (schoolDaysPerWeek === 5 || schoolDaysPerWeek === 6) &&
     effectiveResult.status === 'RESOLVED';
 
-  const handleAddDay = () => {
-    if (!newDayDate) return;
-    const newDay: CalendarDay = {
-      id: `day-${Date.now()}`,
-      academicCalendarId: calendar?.id || `cal-${academicSetting.id}`,
-      date: newDayDate,
-      status: newDayStatus,
-      notes: newDayNotes || (newDayStatus === 'holiday' ? 'Hari Libur' : 'Kegiatan Khusus'),
-    };
-    setDays((prev) => [...prev, newDay]);
-    setNewDayDate('');
-    setNewDayNotes('');
-  };
+  // =========================================================================
+  // WORKFLOW ACTION HANDLERS
+  // =========================================================================
 
-  const handleRemoveDay = (id: string) => {
-    setDays((prev) => prev.filter((d) => d.id !== id));
-  };
+  // Step 1: AUTO RESOLVE
+  const handleAutoResolve = (showNotification: boolean = true) => {
+    const res = resolveOfficialCalendar({
+      province: selectedProvince,
+      academicYear,
+      semester: semester || '1',
+      academicSettingId: academicSetting.id,
+      calendarId: calendar?.id,
+      schoolDaysPerWeek,
+      subjectWeeklyJP: jpPerWeek,
+    });
 
-  const handleResetToOfficialJP = () => {
-    if (officialRule.weeklyJP) {
-      setJpPerWeek(officialRule.weeklyJP);
+    if (res.isResolved && res.calendar) {
+      setStartDate(res.calendar.startDate);
+      setEndDate(res.calendar.endDate);
+      setSchoolDaysPerWeek(res.calendar.schoolDaysPerWeek || 5);
+      setSourceType('REGIONAL_EDUCATION_CALENDAR');
+      setSourceName(res.calendar.sourceName || '');
+      setSourceAuthority(res.calendar.sourceAuthority || '');
+      setSourceDocumentNumber(res.calendar.sourceDocumentNumber || '');
+      setSourceUrl(res.calendar.sourceUrl || '');
+      setDays(res.days);
+      setIsOverridden(false);
+      setWorkflowStatus('AUTO_RESOLVED');
+      setResolutionMessage(res.diagnostic);
+
+      onSaveCalendar(res.calendar, res.days);
+
+      if (showNotification) {
+        setSaveNotification('Kalender Pendidikan berhasil di-resolusi secara otomatis dari Sumber Resmi Daerah!');
+        setTimeout(() => setSaveNotification(null), 3500);
+      }
+    } else {
+      setWorkflowStatus('UNRESOLVED');
+      setResolutionMessage(res.diagnostic);
+      if (showNotification) {
+        setSaveNotification(res.diagnostic);
+        setTimeout(() => setSaveNotification(null), 4000);
+      }
     }
   };
 
-  const handleSaveCalendarConfig = () => {
-    const updatedCalendar: AcademicCalendar = {
+  // Step 3: MANUAL OVERRIDE
+  const handleApplyOverride = (overrideUpdates?: Partial<AcademicCalendar>, updatedDays?: CalendarDay[]) => {
+    const currentCal: AcademicCalendar = {
+      id: calendar?.id || `cal-${academicSetting.id}`,
+      academicSettingId: academicSetting.id,
+      academicYear,
+      semester: semester ? (semester === '1' ? '1 (Ganjil)' : '2 (Genap)') : '',
+      startDate,
+      endDate,
+      schoolDaysPerWeek,
+      sourceType: 'SCHOOL_OVERRIDE',
+      sourceName: sourceName.trim() || undefined,
+      sourceAuthority: sourceAuthority.trim() || undefined,
+      sourceDocumentNumber: sourceDocumentNumber.trim() || undefined,
+      sourceUrl: sourceUrl.trim() || undefined,
+      sourceRegion: selectedProvince,
+      workflowStatus: 'MANUAL_OVERRIDE',
+      isOverridden: true,
+      overrideReason: overrideReason.trim() || 'Penyesuaian tanggal / agenda oleh satuan pendidikan',
+      jpPerWeek,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const targetDays = updatedDays || days;
+    const res = applyManualCalendarOverride(
+      currentCal,
+      targetDays,
+      overrideUpdates || {},
+      targetDays
+    );
+
+    setIsOverridden(true);
+    setWorkflowStatus('MANUAL_OVERRIDE');
+    onSaveCalendar(res.calendar, res.days);
+
+    setSaveNotification('Penyesuaian Manual (Manual Override) berhasil diterapkan & disimpan.');
+    setTimeout(() => setSaveNotification(null), 3000);
+  };
+
+  // Step 4: CONFIRM
+  const handleConfirmCalendar = () => {
+    if (!isCalendarConfigComplete) {
+      alert('Lengkapi konfigurasi kalender terlebih dahulu sebelum melakukan konfirmasi.');
+      return;
+    }
+
+    const currentCal: AcademicCalendar = {
       id: calendar?.id || `cal-${academicSetting.id}`,
       academicSettingId: academicSetting.id,
       academicYear,
@@ -255,13 +365,63 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
       schoolDaysPerWeek,
       sourceType,
       sourceName: sourceName.trim() || undefined,
-      sourceRegion: sourceRegion.trim() || undefined,
+      sourceAuthority: sourceAuthority.trim() || undefined,
+      sourceDocumentNumber: sourceDocumentNumber.trim() || undefined,
+      sourceUrl: sourceUrl.trim() || undefined,
+      sourceRegion: selectedProvince,
+      workflowStatus: 'CONFIRMED',
+      isOverridden,
+      overrideReason: isOverridden ? overrideReason : undefined,
       jpPerWeek,
       updatedAt: new Date().toISOString(),
     };
-    onSaveCalendar(updatedCalendar, days);
-    setSaveNotification('Konfigurasi Kalender & JP berhasil disimpan!');
-    setTimeout(() => setSaveNotification(null), 3000);
+
+    const res = confirmCalendarWorkflow(currentCal, days);
+    setWorkflowStatus('CONFIRMED');
+    onSaveCalendar(res.calendar, res.days);
+
+    setSaveNotification('Kalender Pendidikan RESMI DIKONFIRMASI & DITETAPKAN untuk semester ini!');
+    setTimeout(() => setSaveNotification(null), 3500);
+  };
+
+  // Reset to Official
+  const handleResetToOfficial = () => {
+    if (confirm('Kembalikan semua tanggal dan agenda ke Kalender Pendidikan Resmi Daerah? Modifikasi manual sekolah akan digantikan.')) {
+      handleAutoResolve(true);
+    }
+  };
+
+  // Day add/remove
+  const handleAddDay = () => {
+    if (!newDayDate) return;
+    const newDay: CalendarDay = {
+      id: `day-${Date.now()}`,
+      academicCalendarId: calendar?.id || `cal-${academicSetting.id}`,
+      date: newDayDate,
+      status: newDayStatus,
+      notes: newDayNotes || (newDayStatus === 'holiday' ? 'Hari Libur Sekolah' : 'Kegiatan Khusus Sekolah'),
+      sourceType: 'SCHOOL_OVERRIDE',
+      sourceName: school.name || 'Satuan Pendidikan',
+      isOverridden: true,
+      category: newDayStatus === 'holiday' ? 'OTHER' : 'SCHOOL_EVENT',
+    };
+    const updatedDays = [...days, newDay].sort((a, b) => a.date.localeCompare(b.date));
+    setDays(updatedDays);
+    setNewDayDate('');
+    setNewDayNotes('');
+    handleApplyOverride({}, updatedDays);
+  };
+
+  const handleRemoveDay = (id: string) => {
+    const updatedDays = days.filter((d) => d.id !== id);
+    setDays(updatedDays);
+    handleApplyOverride({}, updatedDays);
+  };
+
+  const handleResetToOfficialJP = () => {
+    if (officialRule.weeklyJP) {
+      setJpPerWeek(officialRule.weeklyJP);
+    }
   };
 
   const handleWeekChange = (itemId: string, week: number) => {
@@ -283,7 +443,11 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
         return updated;
       } else {
         const currAtpItem = atp?.items?.find((i) => i.id === itemId);
-        const allocatedVal = isK13Curriculum ? (jpPerWeek || 0) : (currAtpItem?.jp ? Number(currAtpItem.jp) : (jpPerWeek || 0));
+        const allocatedVal = isK13Curriculum
+          ? jpPerWeek || 0
+          : currAtpItem?.jp
+          ? Number(currAtpItem.jp)
+          : jpPerWeek || 0;
         const newAlloc: TimeAllocation = {
           id: `alloc-${Date.now()}-${itemId}`,
           academicSettingId: academicSetting.id,
@@ -314,7 +478,9 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
       return;
     }
     if (!startDate || !endDate || !schoolDaysPerWeek) {
-      alert('Kalender pendidikan belum lengkap. Lengkapi tanggal mulai, tanggal selesai, dan hari sekolah per pekan sebelum ekspor.');
+      alert(
+        'Kalender pendidikan belum lengkap. Lengkapi tanggal mulai, tanggal selesai, dan hari sekolah per pekan sebelum ekspor.'
+      );
       return;
     }
     setIsExporting('kalender');
@@ -337,8 +503,9 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
           schoolDaysPerWeek,
           sourceType,
           sourceName: sourceName.trim() || undefined,
-          sourceRegion: sourceRegion.trim() || undefined,
+          sourceRegion: selectedProvince,
           jpPerWeek,
+          workflowStatus,
           updatedAt: new Date().toISOString(),
         },
         calendarDays: days,
@@ -380,8 +547,9 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
           schoolDaysPerWeek,
           sourceType,
           sourceName: sourceName.trim() || undefined,
-          sourceRegion: sourceRegion.trim() || undefined,
+          sourceRegion: selectedProvince,
           jpPerWeek,
+          workflowStatus,
           updatedAt: new Date().toISOString(),
         },
         timeAllocations: allocations,
@@ -392,6 +560,9 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
       setIsExporting(null);
     }
   };
+
+  const availableProvinces = useMemo(() => getAvailableProvinces(), []);
+  const availableYears = useMemo(() => getAvailableAcademicYears(), []);
 
   return (
     <div className="space-y-6" id="time-planning-container">
@@ -411,10 +582,10 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
               <span>Modul Perencanaan Waktu Pembelajaran Resmi</span>
             </div>
             <h2 className="text-xl font-bold text-slate-900 mt-1">
-              Kalender Pendidikan, Hari/Minggu Efektif, & Alokasi JP
+              Kalender Pendidikan, Hari/Minggu Efektif, &amp; Alokasi JP
             </h2>
             <p className="text-sm text-slate-500 mt-0.5">
-              Sinkronisasi perhitungan waktu berbasis regulasi resmi untuk {academicSetting.subject} ({academicSetting.grade} - {academicSetting.level})
+              Alur Kerja Terintegrasi: <strong>Auto Resolve → Review → Manual Override → Confirm</strong> untuk {academicSetting.subject} ({academicSetting.grade} - {academicSetting.level})
             </p>
           </div>
 
@@ -452,51 +623,185 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
           </div>
         </div>
 
-        {/* Completeness Warning Banner */}
-        {!isCalendarConfigComplete && (
-          <div className="mt-4 p-3.5 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-3 text-amber-900 text-xs">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-bold text-amber-950">Status Kalender: Belum Lengkap. </span>
-              Lengkapi penetapan semester, tanggal mulai semester, tanggal akhir semester, dan pilihan hari sekolah (5/6 hari) pada formulir di bawah. Sesuai prinsip ketat <em>NO DATA &gt; FAKE DATA</em>, sistem tidak membuat semester, tanggal, atau estimasi hari efektif fiktif sampai data definitif disimpan.
+        {/* 4-STEP WORKFLOW STEPPER BAR */}
+        <div className="mt-5 p-4 bg-slate-50 border border-slate-200 rounded-xl" id="calendar-workflow-stepper">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+              Status Alur Kalender:
+            </span>
+            <div className="flex items-center gap-2">
+              {workflowStatus === 'CONFIRMED' && (
+                <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-xs font-bold flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  Kalender Terkonfirmasi &amp; Sah
+                </span>
+              )}
+              {workflowStatus === 'MANUAL_OVERRIDE' && (
+                <span className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-xs font-bold flex items-center gap-1.5">
+                  <Edit3 className="w-3.5 h-3.5 text-amber-700" />
+                  Override Satuan Pendidikan Aktif
+                </span>
+              )}
+              {workflowStatus === 'AUTO_RESOLVED' && (
+                <span className="px-2.5 py-1 bg-indigo-100 text-indigo-900 border border-indigo-300 rounded-full text-xs font-bold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-700" />
+                  Auto-Resolved (Sumber Resmi Daerah)
+                </span>
+              )}
+              {workflowStatus === 'UNRESOLVED' && (
+                <span className="px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-300 rounded-full text-xs font-bold flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                  Belum Ditetapkan (Pilih Wilayah)
+                </span>
+              )}
             </div>
           </div>
-        )}
 
-        {/* Regulatory Provenance Card */}
-        <div className="mt-4 p-3.5 bg-indigo-50/60 rounded-xl border border-indigo-100 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs text-indigo-950">
-          <div className="flex items-start gap-2.5">
-            <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold">Basis Regulasi Struktur Kurikulum:</span>
-                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded font-semibold text-[11px]">
-                  {officialRule.regulation}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
+            {/* Step 1: Auto Resolve */}
+            <div
+              className={`p-3 rounded-lg border transition-all ${
+                workflowStatus === 'AUTO_RESOLVED' || workflowStatus === 'MANUAL_OVERRIDE' || workflowStatus === 'CONFIRMED'
+                  ? 'bg-indigo-50/80 border-indigo-200 text-indigo-950'
+                  : 'bg-white border-slate-200 text-slate-600'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 font-bold mb-1">
+                <span className="w-5 h-5 rounded-full bg-indigo-600 text-white inline-flex items-center justify-center text-[10px]">
+                  1
                 </span>
-                {isCustomJP && (
-                  <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold text-[10px]">
-                    Kustomisasi Guru (Override)
+                <span>AUTO RESOLVE</span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                Pencocokan otomatis Kaldik Provinsi &amp; Libur SKB 3 Menteri
+              </p>
+            </div>
+
+            {/* Step 2: Review */}
+            <div
+              className={`p-3 rounded-lg border transition-all ${
+                isCalendarConfigComplete
+                  ? 'bg-indigo-50/80 border-indigo-200 text-indigo-950'
+                  : 'bg-white border-slate-200 text-slate-600'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 font-bold mb-1">
+                <span className="w-5 h-5 rounded-full bg-indigo-600 text-white inline-flex items-center justify-center text-[10px]">
+                  2
+                </span>
+                <span>REVIEW</span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                Verifikasi {effectiveWeeks ?? '-'} pekan efektif &amp; {effectiveResult.effectiveLearningDays ?? '-'} hari efektif
+              </p>
+            </div>
+
+            {/* Step 3: Manual Override */}
+            <div
+              className={`p-3 rounded-lg border transition-all ${
+                isOverridden
+                  ? 'bg-amber-50/90 border-amber-300 text-amber-950'
+                  : 'bg-white border-slate-200 text-slate-600'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 font-bold mb-1">
+                <span className="w-5 h-5 rounded-full bg-amber-600 text-white inline-flex items-center justify-center text-[10px]">
+                  3
+                </span>
+                <span>MANUAL OVERRIDE</span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                {isOverridden ? 'Penyesuaian sekolah diterapkan' : 'Opsional: atur jadwal lokal sekolah'}
+              </p>
+            </div>
+
+            {/* Step 4: Confirm */}
+            <div
+              className={`p-3 rounded-lg border transition-all ${
+                workflowStatus === 'CONFIRMED'
+                  ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
+                  : 'bg-white border-slate-200 text-slate-600'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 font-bold mb-1">
+                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white inline-flex items-center justify-center text-[10px]">
+                  4
+                </span>
+                <span>CONFIRM</span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                {workflowStatus === 'CONFIRMED' ? 'Telah dikonfirmasi' : 'Kunci penetapan kalender semester'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* PROVENANCE & RESOLUTION TOOLBAR */}
+        <div className="mt-4 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs text-indigo-950">
+          <div className="flex items-start gap-3">
+            <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-bold text-slate-800">Sumber Kaldik Wilayah:</span>
+                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded font-semibold text-[11px]">
+                  {sourceAuthority || `Provinsi ${selectedProvince}`}
+                </span>
+                {sourceDocumentNumber && (
+                  <span className="px-2 py-0.5 bg-slate-200 text-slate-800 rounded font-mono text-[10px]">
+                    {sourceDocumentNumber}
                   </span>
                 )}
+                <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-[11px]">
+                  Overlay SKB 3 Menteri
+                </span>
               </div>
-              <p className="text-slate-600 mt-1">
-                Standar Intrakurikuler Resmi: <strong>{officialRule.weeklyJP !== null ? `${officialRule.weeklyJP} JP/pekan` : 'Belum ditetapkan'}</strong> ({officialRule.annualJP ? `${officialRule.annualJP} JP/tahun` : 'Belum ditetapkan'})
-                {officialRule.kokurikulerAnnualJP ? ` • P5/Kokurikuler: ${officialRule.kokurikulerWeeklyJP ? `${officialRule.kokurikulerWeeklyJP} JP/pekan ` : ''}(${officialRule.kokurikulerAnnualJP} JP/tahun)` : ''}
+              <p className="text-slate-600 text-[11px]">
+                {resolutionMessage || `Kalender tersinkronisasi berdasarkan wilayah sekolah (${selectedProvince}) dan tahun ajaran (${academicYear}).`}
               </p>
             </div>
           </div>
 
-          {isCustomJP && (
+          <div className="flex items-center gap-2 shrink-0">
+            {isOverridden && (
+              <button
+                type="button"
+                onClick={handleResetToOfficial}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg font-medium text-xs shadow-2xs transition-colors"
+                title="Kembalikan ke Kalender Pendidikan Resmi Daerah"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                <span>Kembalikan ke Resmi</span>
+              </button>
+            )}
+
             <button
+              id="btn-re-resolve-calendar"
               type="button"
-              onClick={handleResetToOfficialJP}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 text-indigo-700 border border-indigo-200 rounded-lg font-medium text-xs shadow-2xs self-start md:self-auto shrink-0"
-              title="Kembalikan ke nilai JP resmi regulasi"
+              onClick={() => handleAutoResolve(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold text-xs shadow-2xs transition-colors"
+              title="Jalankan Ulang Resolusi Otomatis"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Gunakan Standar Resmi ({officialRule.weeklyJP} JP)</span>
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Resolusi Otomatis</span>
             </button>
-          )}
+
+            {workflowStatus !== 'CONFIRMED' && (
+              <button
+                id="btn-confirm-calendar-workflow"
+                type="button"
+                onClick={handleConfirmCalendar}
+                disabled={!isCalendarConfigComplete}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-bold text-xs shadow-2xs transition-colors ${
+                  isCalendarConfigComplete
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <Check className="w-4 h-4" />
+                <span>Konfirmasi Kalender</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Quick KPI Cards */}
@@ -531,13 +836,31 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
             </span>
             <span className="text-2xl font-bold text-emerald-700 mt-1 block">{totalPlannedJP} JP</span>
             <span className="text-xs text-slate-500">
-              {isK13Curriculum ? `Dari ${k13Analysis?.items?.length || 0} KD K13` : `Dari ${atp?.items?.length || 0} Tujuan Pembelajaran`}
+              {isK13Curriculum
+                ? `Dari ${k13Analysis?.items?.length || 0} KD K13`
+                : `Dari ${atp?.items?.length || 0} Tujuan Pembelajaran`}
             </span>
           </div>
 
-          <div className={`border rounded-xl p-4 ${jpDifference === null ? 'bg-slate-50 border-slate-200' : jpDifference < 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+          <div
+            className={`border rounded-xl p-4 ${
+              jpDifference === null
+                ? 'bg-slate-50 border-slate-200'
+                : jpDifference < 0
+                ? 'bg-amber-50 border-amber-200'
+                : 'bg-emerald-50 border-emerald-200'
+            }`}
+          >
             <span className="text-xs font-medium text-slate-600 block">Analisis Selisih Jam</span>
-            <span className={`text-xl font-bold mt-1 block ${jpDifference === null ? 'text-slate-500' : jpDifference < 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+            <span
+              className={`text-xl font-bold mt-1 block ${
+                jpDifference === null
+                  ? 'text-slate-500'
+                  : jpDifference < 0
+                  ? 'text-amber-700'
+                  : 'text-emerald-700'
+              }`}
+            >
               {jpDifference === null
                 ? 'Belum Dihitung'
                 : jpDifference === 0
@@ -564,8 +887,10 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
             <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold text-amber-950">Perhatian Alokasi Waktu: </span>
-              Total Jam Pelajaran pada rancangan materi ({totalPlannedJP} JP) melebihi ketersediaan Jam Pembelajaran Efektif ({totalAvailableJP} JP) sebanyak {Math.abs(jpDifference)} JP.
-              Saran: Rampingkan alokasi waktu per unit materi atau sesuaikan perkiraan pekan efektif pada kalender.
+              Total Jam Pelajaran pada rancangan materi ({totalPlannedJP} JP) melebihi ketersediaan Jam
+              Pembelajaran Efektif ({totalAvailableJP} JP) sebanyak {Math.abs(jpDifference)} JP. Saran:
+              Rampingkan alokasi waktu per unit materi atau sesuaikan perkiraan pekan efektif pada
+              kalender.
             </div>
           </div>
         )}
@@ -574,8 +899,12 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
           <div className="mt-4 p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-start gap-2.5 text-emerald-900 text-xs">
             <Info className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
             <div>
-              <span className="font-semibold text-emerald-950">Optimalisasi Selisih Waktu (+{jpDifference} JP): </span>
-              Sisa jam efektif ini dapat dialokasikan untuk: (1) Asesmen Sumatif Akhir Semester, (2) Kegiatan Remedial &amp; Pengayaan terstruktur, (3) Penguatan Proyek/P5, atau (4) Cadangan waktu fleksibilitas agenda sekolah.
+              <span className="font-semibold text-emerald-950">
+                Optimalisasi Selisih Waktu (+{jpDifference} JP):{' '}
+              </span>
+              Sisa jam efektif ini dapat dialokasikan untuk: (1) Asesmen Sumatif Akhir Semester, (2)
+              Kegiatan Remedial &amp; Pengayaan terstruktur, (3) Penguatan Proyek/P5, atau (4) Cadangan
+              waktu fleksibilitas agenda sekolah.
             </div>
           </div>
         )}
@@ -583,26 +912,59 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
 
       {/* Grid: Calendar Configuration & Days List */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left: Configuration Form */}
+        {/* Left: Configuration & Resolution Parameters */}
         <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200 shadow-xs p-6">
-          <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
-            <CalendarIcon className="w-5 h-5 text-indigo-600" />
-            <h3 className="font-bold text-slate-800 text-base">Konfigurasi Rentang Kalender</h3>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+            <div className="flex items-center gap-2">
+              <CalendarIcon className="w-5 h-5 text-indigo-600" />
+              <h3 className="font-bold text-slate-800 text-base">Konfigurasi Kalender &amp; Wilayah</h3>
+            </div>
+            {isOverridden && (
+              <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-semibold text-[10px]">
+                Manual Override
+              </span>
+            )}
           </div>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Tahun Ajaran</label>
-                <input
-                  type="text"
-                  value={academicYear}
-                  onChange={(e) => setAcademicYear(e.target.value)}
-                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  placeholder="Contoh: 2024/2025"
-                />
+            {/* Region & Academic Year Selector */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2.5">
+              <span className="text-xs font-bold text-slate-700 block">Parameter Resolusi Wilayah:</span>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-600 mb-0.5">Provinsi Sekolah</label>
+                  <select
+                    value={selectedProvince}
+                    onChange={(e) => {
+                      setSelectedProvince(e.target.value);
+                    }}
+                    className="w-full text-xs px-2.5 py-1.5 border border-slate-300 rounded bg-white font-medium"
+                  >
+                    {availableProvinces.map((prov) => (
+                      <option key={prov} value={prov}>
+                        {prov}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-600 mb-0.5">Tahun Ajaran</label>
+                  <select
+                    value={academicYear}
+                    onChange={(e) => setAcademicYear(e.target.value)}
+                    className="w-full text-xs px-2.5 py-1.5 border border-slate-300 rounded bg-white font-medium"
+                  >
+                    {availableYears.map((yr) => (
+                      <option key={yr} value={yr}>
+                        {yr}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+            </div>
 
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
                   Semester <span className="text-rose-500">*</span>
@@ -611,7 +973,8 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
                   value={semester ?? ''}
                   onChange={(e) => {
                     const val = e.target.value;
-                    setSemester(val === '1' || val === '2' ? val : null);
+                    const newSem = val === '1' || val === '2' ? val : null;
+                    setSemester(newSem);
                   }}
                   className={`w-full text-xs px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white font-medium ${
                     !semester ? 'border-amber-400 bg-amber-50/40 text-slate-700' : 'border-slate-300'
@@ -621,12 +984,23 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
                   <option value="1">Semester 1 (Ganjil)</option>
                   <option value="2">Semester 2 (Genap)</option>
                 </select>
-                {!semester && (
-                  <p className="text-[10px] text-amber-700 mt-1 flex items-center gap-1 font-medium">
-                    <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
-                    Semester belum ditetapkan
-                  </p>
-                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Hari Sekolah / Pekan</label>
+                <select
+                  value={schoolDaysPerWeek ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value ? Number(e.target.value) : null;
+                    setSchoolDaysPerWeek(val);
+                    handleApplyOverride({ schoolDaysPerWeek: val });
+                  }}
+                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white font-medium"
+                >
+                  <option value="">-- Pilih Hari Kerja --</option>
+                  <option value={5}>5 Hari (Senin - Jumat)</option>
+                  <option value={6}>6 Hari (Senin - Sabtu)</option>
+                </select>
               </div>
             </div>
 
@@ -636,7 +1010,10 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
                 <input
                   type="date"
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    handleApplyOverride({ startDate: e.target.value });
+                  }}
                   className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
               </div>
@@ -646,91 +1023,51 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
                 <input
                   type="date"
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    handleApplyOverride({ endDate: e.target.value });
+                  }}
                   className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Hari Sekolah / Pekan</label>
-                <select
-                  value={schoolDaysPerWeek ?? ''}
-                  onChange={(e) => {
-                    const val = e.target.value ? Number(e.target.value) : null;
-                    setSchoolDaysPerWeek(val);
-                  }}
-                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white font-medium"
-                >
-                  <option value="">-- Pilih Hari Kerja --</option>
-                  <option value={5}>5 Hari (Senin - Jumat)</option>
-                  <option value={6}>6 Hari (Senin - Sabtu)</option>
-                </select>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-medium text-slate-700">JP Intrakurikuler / Pekan</label>
-                  {officialRule.isOfficial && officialRule.weeklyJP !== null && (
-                    <span className="text-[10px] text-slate-500 font-normal">Resmi: {officialRule.weeklyJP} JP</span>
-                  )}
-                </div>
-                <input
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={jpPerWeek ?? ''}
-                  placeholder="Masukkan JP"
-                  onChange={(e) => {
-                    const val = e.target.value ? Number(e.target.value) : null;
-                    setJpPerWeek(val);
-                  }}
-                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold text-indigo-900"
-                />
-              </div>
-            </div>
-
-            {/* Provenance Metadata */}
-            <div className="pt-2 border-t border-slate-100 space-y-2">
-              <span className="text-[11px] font-bold text-slate-600 block">Sumber &amp; Provenance Kalender:</span>
-              <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={sourceType}
-                  onChange={(e) => setSourceType(e.target.value as CalendarSourceType)}
-                  className="text-xs px-2.5 py-1.5 border border-slate-300 rounded bg-white"
-                >
-                  <option value="REGIONAL_EDUCATION_CALENDAR">Kalender Dinas Pendidikan</option>
-                  <option value="SCHOOL_ADJUSTMENT">Penyesuaian Satuan Pendidikan</option>
-                  <option value="MANUAL">Input Manual Guru</option>
-                  <option value="IMPORTED">Import Kalender Eksternal</option>
-                </select>
-                <input
-                  type="text"
-                  value={sourceRegion}
-                  onChange={(e) => setSourceRegion(e.target.value)}
-                  placeholder="Wilayah / Daerah (cth: Prov. Jawa Barat)"
-                  className="text-xs px-2.5 py-1.5 border border-slate-300 rounded bg-white"
-                />
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-slate-700">JP Intrakurikuler / Pekan</label>
+                {officialRule.isOfficial && officialRule.weeklyJP !== null && (
+                  <span className="text-[10px] text-slate-500 font-normal">
+                    Resmi Kurikulum: {officialRule.weeklyJP} JP
+                  </span>
+                )}
               </div>
               <input
-                type="text"
-                value={sourceName}
-                onChange={(e) => setSourceName(e.target.value)}
-                placeholder="Nomor SK / Nama Dokumen Rujukan Kalender"
-                className="w-full text-xs px-2.5 py-1.5 border border-slate-300 rounded bg-white"
+                type="number"
+                min={1}
+                max={20}
+                value={jpPerWeek ?? ''}
+                placeholder="Masukkan JP"
+                onChange={(e) => {
+                  const val = e.target.value ? Number(e.target.value) : null;
+                  setJpPerWeek(val);
+                }}
+                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold text-indigo-900"
               />
             </div>
 
             {/* Monthly Breakdown Preview */}
             {effectiveResult?.monthlyBreakdown && effectiveResult.monthlyBreakdown.length > 0 && (
               <div className="pt-2 border-t border-slate-100">
-                <span className="text-[11px] font-bold text-slate-600 block mb-1.5">Rincian Hari Efektif Bulanan:</span>
+                <span className="text-[11px] font-bold text-slate-600 block mb-1.5">
+                  Rincian Hari Efektif Bulanan (Review):
+                </span>
                 <div className="grid grid-cols-3 gap-1.5 text-[11px]">
                   {effectiveResult.monthlyBreakdown.map((m) => (
                     <div key={m.monthName} className="p-2 bg-slate-50 rounded border border-slate-200">
                       <div className="font-semibold text-slate-800">{m.monthName}</div>
-                      <div className="text-slate-500 text-[10px]">{m.effectiveDays} HE / {m.effectiveWeeks} ME</div>
+                      <div className="text-slate-500 text-[10px]">
+                        {m.effectiveDays} HE / {m.effectiveWeeks} ME
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -740,28 +1077,35 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
             <button
               id="btn-save-calendar-config"
               type="button"
-              onClick={handleSaveCalendarConfig}
+              onClick={() => handleApplyOverride()}
               className="w-full mt-2 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors"
             >
               <Save className="w-4 h-4" />
-              <span>Simpan Konfigurasi Kalender &amp; JP</span>
+              <span>Simpan &amp; Terapkan Kalender</span>
             </button>
           </div>
         </div>
 
-        {/* Right: Days & Special Events Manager */}
+        {/* Right: Days & Special Events Manager (Manual Override & Provenance) */}
         <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-xs p-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
             <div className="flex items-center gap-2">
               <CalendarCheck className="w-5 h-5 text-indigo-600" />
-              <h3 className="font-bold text-slate-800 text-base">Agenda Libur &amp; Kegiatan Khusus Satuan Pendidikan</h3>
+              <div>
+                <h3 className="font-bold text-slate-800 text-base">Agenda Libur, Ujian, &amp; Penyesuaian Sekolah</h3>
+                <p className="text-xs text-slate-500">
+                  Kaldik Daerah + Overlay Libur SKB 3 Menteri + Override Satuan Pendidikan
+                </p>
+              </div>
             </div>
             <span className="text-xs text-slate-500 font-medium">{days.length} entri tercatat</span>
           </div>
 
-          {/* Add Day Input */}
+          {/* Add Day Input (Manual Override) */}
           <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-4 space-y-2">
-            <span className="text-xs font-semibold text-slate-700 block">Tambah Hari Libur / Agenda Non-KBM:</span>
+            <span className="text-xs font-semibold text-slate-700 block">
+              Tambah Penyesuaian Tanggal Libur / Agenda Sekolah:
+            </span>
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
               <input
                 type="date"
@@ -782,7 +1126,7 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
                 type="text"
                 value={newDayNotes}
                 onChange={(e) => setNewDayNotes(e.target.value)}
-                placeholder="Keterangan (cth: PTS / Libur Nasional)"
+                placeholder="Keterangan (cth: PTS / Libur Khusus Sekolah)"
                 className="sm:col-span-4 text-xs px-2.5 py-1.5 border border-slate-300 rounded bg-white"
               />
               <button
@@ -797,28 +1141,29 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
           </div>
 
           {/* Days Table List */}
-          <div className="overflow-x-auto max-h-64 overflow-y-auto border border-slate-200 rounded-lg">
+          <div className="overflow-x-auto max-h-72 overflow-y-auto border border-slate-200 rounded-lg">
             <table className="w-full text-left text-xs text-slate-600">
               <thead className="bg-slate-100 text-slate-700 sticky top-0 font-semibold border-b border-slate-200">
                 <tr>
                   <th className="py-2 px-3">Tanggal</th>
                   <th className="py-2 px-3">Jenis</th>
                   <th className="py-2 px-3">Keterangan</th>
+                  <th className="py-2 px-3">Sumber</th>
                   <th className="py-2 px-3 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {days.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="py-6 text-center text-slate-400">
-                      Belum ada tanggal libur atau agenda khusus ditambahkan.
+                    <td colSpan={5} className="py-6 text-center text-slate-400">
+                      Belum ada tanggal libur atau agenda khusus ditambahkan. Klik <em>Resolusi Otomatis</em> di atas untuk mengisi kalender resmi.
                     </td>
                   </tr>
                 ) : (
                   days.map((d) => (
                     <tr key={d.id} className="hover:bg-slate-50">
-                      <td className="py-2 px-3 font-medium text-slate-800">{d.date}</td>
-                      <td className="py-2 px-3">
+                      <td className="py-2 px-3 font-medium text-slate-800 whitespace-nowrap">{d.date}</td>
+                      <td className="py-2 px-3 whitespace-nowrap">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
                             d.status === 'holiday'
@@ -828,10 +1173,23 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
                               : 'bg-emerald-100 text-emerald-800'
                           }`}
                         >
-                          {d.status === 'holiday' ? 'Libur' : d.status === 'schoolEvent' ? 'Kegiatan' : 'Efektif'}
+                          {d.status === 'holiday'
+                            ? 'Libur'
+                            : d.status === 'schoolEvent'
+                            ? 'Kegiatan'
+                            : 'Efektif'}
                         </span>
                       </td>
-                      <td className="py-2 px-3 text-slate-600">{d.notes || '-'}</td>
+                      <td className="py-2 px-3 text-slate-700 font-medium">{d.notes || '-'}</td>
+                      <td className="py-2 px-3 text-[10px] text-slate-500 whitespace-nowrap">
+                        {d.sourceType === 'NATIONAL_HOLIDAY_OVERLAY' ? (
+                          <span className="text-blue-600 font-medium">SKB 3 Menteri</span>
+                        ) : d.sourceType === 'SCHOOL_OVERRIDE' || d.isOverridden ? (
+                          <span className="text-amber-700 font-medium">Sekolah (Override)</span>
+                        ) : (
+                          <span className="text-indigo-600 font-medium">Kaldik Disdik</span>
+                        )}
+                      </td>
                       <td className="py-2 px-3 text-center">
                         <button
                           type="button"
@@ -863,7 +1221,9 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
                   : 'Pemetaan Pekan Pembelajaran per TP (Alur Tujuan Pembelajaran)'}
               </h3>
               <p className="text-xs text-slate-500">
-                Distribusikan urutan pekan mengajar efektif ({effectiveWeeks !== null ? `${effectiveWeeks} pekan` : 'belum ditentukan'}) untuk setiap unit materi
+                Distribusikan urutan pekan mengajar efektif (
+                {effectiveWeeks !== null ? `${effectiveWeeks} pekan` : 'belum ditentukan'}) untuk setiap
+                unit materi
               </p>
             </div>
           </div>
@@ -884,7 +1244,9 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
           !k13Analysis?.items || k13Analysis.items.length === 0 ? (
             <div className="p-6 text-center text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-300">
               <p className="text-sm">Belum ada Analisis KD K13 yang disusun pada alur K13.</p>
-              <p className="text-xs text-slate-400 mt-1">Silakan susun Analisis KD K13 terlebih dahulu agar materi otomatis terhubung di sini.</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Silakan susun Analisis KD K13 terlebih dahulu agar materi otomatis terhubung di sini.
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto border border-slate-200 rounded-lg">
@@ -907,17 +1269,28 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
                         a.atpItemId === item.id ||
                         a.tpId === item.id
                     );
-                    const defaultWeek = effectiveWeeks ? Math.min(effectiveWeeks, index + 1) : index + 1;
+                    const defaultWeek = effectiveWeeks
+                      ? Math.min(effectiveWeeks, index + 1)
+                      : index + 1;
                     const currentWeek = matchedAlloc?.weekNumber || defaultWeek;
-                    const displayJP = matchedAlloc?.allocatedJP ?? matchedAlloc?.jp ?? (item.alokasiJp ? Number(item.alokasiJp) : null);
+                    const displayJP =
+                      matchedAlloc?.allocatedJP ??
+                      matchedAlloc?.jp ??
+                      (item.alokasiJp ? Number(item.alokasiJp) : null);
 
                     return (
                       <tr key={item.id} className="hover:bg-slate-50/80">
-                        <td className="py-2.5 px-3 text-center font-medium text-slate-500">{index + 1}</td>
+                        <td className="py-2.5 px-3 text-center font-medium text-slate-500">
+                          {index + 1}
+                        </td>
                         <td className="py-2.5 px-3 font-semibold text-indigo-700">{item.kd}</td>
                         <td className="py-2.5 px-3">
-                          <div className="font-medium text-slate-800">{item.indikator || item.materi}</div>
-                          <div className="text-[11px] text-slate-500 mt-0.5">Materi Pokok: {item.materi || '-'}</div>
+                          <div className="font-medium text-slate-800">
+                            {item.indikator || item.materi}
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            Materi Pokok: {item.materi || '-'}
+                          </div>
                         </td>
                         <td className="py-2.5 px-3 text-center font-semibold text-slate-700">
                           {displayJP !== null ? `${displayJP} JP` : '-'}
@@ -950,8 +1323,12 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
           /* Kurikulum Merdeka ATP Table Mapping */
           !atp?.items || atp.items.length === 0 ? (
             <div className="p-6 text-center text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-300">
-              <p className="text-sm">Belum ada Alur Tujuan Pembelajaran (ATP) yang dibuat pada Step 05.</p>
-              <p className="text-xs text-slate-400 mt-1">Silakan susun ATP terlebih dahulu agar materi otomatis terhubung di sini.</p>
+              <p className="text-sm">
+                Belum ada Alur Tujuan Pembelajaran (ATP) yang dibuat pada Step 05.
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                Silakan susun ATP terlebih dahulu agar materi otomatis terhubung di sini.
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto border border-slate-200 rounded-lg">
@@ -974,7 +1351,9 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
                         a.sourceId === item.id ||
                         a.tpId === item.tpId
                     );
-                    const defaultWeek = effectiveWeeks ? Math.min(effectiveWeeks, index + 1) : index + 1;
+                    const defaultWeek = effectiveWeeks
+                      ? Math.min(effectiveWeeks, index + 1)
+                      : index + 1;
                     const currentWeek = matchedAlloc?.weekNumber || defaultWeek;
                     const displayJP =
                       item.jp !== undefined && item.jp !== null
@@ -983,11 +1362,19 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
 
                     return (
                       <tr key={item.id} className="hover:bg-slate-50/80">
-                        <td className="py-2.5 px-3 text-center font-medium text-slate-500">{index + 1}</td>
-                        <td className="py-2.5 px-3 font-semibold text-indigo-700">{item.tpCode || `TP.${index + 1}`}</td>
+                        <td className="py-2.5 px-3 text-center font-medium text-slate-500">
+                          {index + 1}
+                        </td>
+                        <td className="py-2.5 px-3 font-semibold text-indigo-700">
+                          {item.tpCode || `TP.${index + 1}`}
+                        </td>
                         <td className="py-2.5 px-3">
-                          <div className="font-medium text-slate-800">{item.tpStatement || item.competency}</div>
-                          <div className="text-[11px] text-slate-500 mt-0.5">Lingkup Materi: {item.contentScope || item.subMaterial || '-'}</div>
+                          <div className="font-medium text-slate-800">
+                            {item.tpStatement || item.competency}
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            Lingkup Materi: {item.contentScope || item.subMaterial || '-'}
+                          </div>
                         </td>
                         <td className="py-2.5 px-3 text-center font-semibold text-slate-700">
                           {displayJP !== null ? `${displayJP} JP` : '-'}
@@ -1021,5 +1408,3 @@ export const TimePlanningManager: React.FC<TimePlanningManagerProps> = ({
     </div>
   );
 };
-
-

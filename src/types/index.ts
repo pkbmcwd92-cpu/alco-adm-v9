@@ -383,8 +383,53 @@ export interface Student {
 // ==========================================
 // MODUL A: PERENCANAAN WAKTU
 // ==========================================
+export type CalendarWorkflowStatus =
+  | 'AUTO_RESOLVED'
+  | 'REVIEWED'
+  | 'MANUAL_OVERRIDE'
+  | 'CONFIRMED'
+  | 'UNRESOLVED';
+
+export type CalendarResolutionStatus =
+  | 'UNRESOLVED'
+  | 'PARTIALLY_RESOLVED'
+  | 'RESOLVED'
+  | 'MANUALLY_OVERRIDDEN'
+  | 'REGION_REQUIRED'
+  | 'ACADEMIC_YEAR_REQUIRED';
+
+export type CalendarLayerType = 'REGIONAL_BASE' | 'NATIONAL_OVERLAY' | 'SCHOOL_OVERRIDE' | 'MANUAL';
+
+export interface CalendarProvenance {
+  sourceType: CalendarSourceType;
+  sourceName: string;
+  sourceAuthority: string;
+  sourceUrl?: string;
+  region: string;
+  academicYear: string;
+  documentNumber?: string;
+  documentTitle?: string;
+  publicationDate?: string;
+  effectiveDate?: string;
+  sourceVersion?: string;
+  retrievedAt: string;
+  checksumOrDate?: string;
+}
+
+export interface SchoolCalendarOverride {
+  id: string;
+  date: string; // YYYY-MM-DD
+  status: CalendarDayStatus;
+  notes?: string;
+  reason?: string;
+  isEffectiveOverride?: boolean;
+  createdAt: string;
+}
+
 export type CalendarSourceType =
   | 'REGIONAL_EDUCATION_CALENDAR'
+  | 'NATIONAL_HOLIDAY_OVERLAY'
+  | 'SCHOOL_OVERRIDE'
   | 'SCHOOL_ADJUSTMENT'
   | 'MANUAL'
   | 'IMPORTED'
@@ -405,9 +450,28 @@ export interface AcademicCalendar {
   sourceType?: CalendarSourceType;
   sourceName?: string;
   sourceReference?: string;
+  sourceAuthority?: string;
+  sourceDocumentNumber?: string;
   sourceUrl?: string;
   sourceRegion?: string;
+  workflowStatus?: CalendarWorkflowStatus;
+  resolutionStatus?: CalendarResolutionStatus;
+  reviewStatus?: 'UNREVIEWED' | 'REVIEWED' | 'CONFIRMED';
+  actionableMessage?: string;
+  retrievedAt?: string;
   verifiedAt?: string;
+  confirmedAt?: string;
+  reviewedAt?: string;
+  isOverridden?: boolean;
+  overrideReason?: string;
+  overrides?: SchoolCalendarOverride[];
+  provenance?: CalendarProvenance;
+  nationalProvenance?: CalendarProvenance;
+  nationalHolidayOverlayName?: string;
+  nationalHolidayOverlayUrl?: string;
+  nationalHolidayCount?: number;
+  regionalEventCount?: number;
+  schoolEventCount?: number;
   /** @deprecated Compatibility alias. Prefer setting.subjectWeeklyJP */
   jpPerWeek?: number | null;
   notes?: string;
@@ -434,6 +498,24 @@ export interface CalendarDay {
   date: string; // YYYY-MM-DD
   status: CalendarDayStatus;
   notes?: string;
+  sourceType?: CalendarSourceType | 'REGIONAL_EDUCATION_CALENDAR' | 'NATIONAL_HOLIDAY_OVERLAY' | 'SCHOOL_OVERRIDE' | 'MANUAL';
+  sourceName?: string;
+  sourceLayer?: CalendarLayerType;
+  sourceAuthority?: string;
+  sourceUrl?: string;
+  isOverridden?: boolean;
+  overrideReason?: string;
+  originalStatus?: CalendarDayStatus;
+  category?:
+    | 'NATIONAL_HOLIDAY'
+    | 'CUTI_BERSAMA'
+    | 'REGIONAL_HOLIDAY'
+    | 'SEMESTER_BREAK'
+    | 'MID_SEMESTER_BREAK'
+    | 'SCHOOL_EVENT'
+    | 'ASSESSMENT'
+    | 'RELIGIOUS_HOLIDAY'
+    | 'OTHER';
 }
 
 export interface TimeAllocation {
