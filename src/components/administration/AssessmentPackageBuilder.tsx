@@ -548,13 +548,22 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
         <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
           <BookOpen className="w-8 h-8" />
         </div>
-        <h3 className="text-xl font-bold text-slate-800 mb-2">Belum ada Rencana Asesmen berstatus SIAP.</h3>
+        <h3 className="text-xl font-bold text-slate-800 mb-2">Rencana asesmen perlu direview dan disiapkan terlebih dahulu.</h3>
         <p className="text-slate-600 mb-6 text-sm">
-          Perangkat Asesmen hanya dapat dibuat dari Rencana Asesmen yang telah dikonfirmasi berstatus <strong>SIAP</strong>. Silakan selesaikan dan konfirmasi Rencana Asesmen terlebih dahulu di tab <strong>Rencana Asesmen</strong>.
+          Perangkat Asesmen hanya dapat dibuat dari Rencana Asesmen yang telah dikonfirmasi berstatus <strong>SIAP</strong>. Silakan tinjau dan siapkan rencana asesmen terlebih dahulu di tab <strong>Rencana Asesmen</strong>.
         </p>
-        {assessmentPlans.length > 0 && (
-          <p className="text-xs text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200 inline-block">
-            Terdapat {assessmentPlans.length} Rencana Asesmen yang belum berstatus SIAP.
+        {assessmentPlans.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-xs text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200 inline-block font-medium">
+              Terdapat {assessmentPlans.length} Rencana Asesmen yang masih berstatus DRAFT atau belum SIAP.
+            </p>
+            <p className="text-xs text-slate-500">
+              Buka tab <strong>Rencana Asesmen</strong> untuk meninjau instrumen dan kriteria ketercapaian, lalu klik <strong>Konfirmasi SIAP</strong>.
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-500">
+            Belum ada rencana asesmen. Silakan buka tab <strong>Rencana Asesmen</strong> untuk membuat atau meng-generate draf rencana asesmen secara otomatis.
           </p>
         )}
       </div>
@@ -971,12 +980,12 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
                                 {isMerdeka(academicSetting)
                                   ? tp?.items?.map((item) => (
                                       <option key={item.id} value={item.id}>
-                                        [{item.code}] {item.statement.slice(0, 60)}...
+                                        [{item.code}] {(item.statement || item.description || '').slice(0, 60)}...
                                       </option>
                                     ))
                                   : k13Analysis?.items?.map((item) => (
                                       <option key={item.id} value={item.id}>
-                                        [{item.code}] {item.kdStatement.slice(0, 60)}...
+                                        [{item.kdCode || item.code || ''}] {(item.kdDisplay || item.materiPokok || (item as any).kdStatement || '').slice(0, 60)}...
                                       </option>
                                     ))}
                               </select>

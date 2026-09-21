@@ -4,8 +4,11 @@ import {
   AssessmentTiming,
   AssessmentScopeType,
   AssessmentInstrumentRef,
+  AssessmentInstrumentType,
   AssessmentCriterion,
   TPData,
+  TPItem,
+  ATPData,
   K13Analysis,
   LearningPlan,
   Assessment,
@@ -320,3 +323,465 @@ export function migrateLegacyAssessment(
     };
   }
 }
+
+/**
+ * Mendapatkan label tampilan instrumen asesmen terstandar.
+ */
+export function getInstrumentLabel(type: AssessmentInstrumentType): string {
+  switch (type) {
+    case 'WRITTEN_TEST':
+      return 'Tes Tertulis';
+    case 'ORAL_TEST':
+      return 'Tes Lisan';
+    case 'PERFORMANCE':
+      return 'Tes Kinerja / Praktik';
+    case 'OBSERVATION':
+      return 'Lembar Observasi';
+    case 'ASSIGNMENT':
+      return 'Penugasan';
+    case 'PROJECT':
+      return 'Tugas Proyek';
+    case 'PRODUCT':
+      return 'Penilaian Produk';
+    case 'PORTFOLIO':
+      return 'Dokumen Portofolio';
+    case 'SELF_ASSESSMENT':
+      return 'Penilaian Diri';
+    case 'PEER_ASSESSMENT':
+      return 'Penilaian Antarteman';
+    default:
+      return type;
+  }
+}
+
+/**
+ * Rekomendasi instrumen asesmen berdasarkan karakteristik kompetensi (Audit 9A/Recovery B).
+ * Rule-based & deterministik, tanpa memaksakan semua TP menjadi WRITTEN_TEST.
+ * Membedakan kompetensi motorik/keterampilan fisik (PERFORMANCE, OBSERVATION)
+ * dari kompetensi kognitif/konseptual (WRITTEN_TEST, ORAL_TEST),
+ * dan produk/projek (PRODUCT, PROJECT, ASSIGNMENT).
+ * TIDAK MENG-HARDCODE "PJOK = PERFORMANCE" semata-mata dari nama mata pelajaran.
+ */
+export function recommendInstrumentsForCompetency(params: {
+  competence?: string;
+  statement?: string;
+  contentScope?: string;
+  subject?: string;
+}): AssessmentInstrumentRef[] {
+  const comp = (params.competence || '').toLowerCase();
+  const stmt = (params.statement || '').toLowerCase();
+  const scope = (params.contentScope || '').toLowerCase();
+  const fullText = `${comp} ${stmt} ${scope}`.trim();
+
+  // 1. Indikator Psikomotorik / Kinerja Fisik / Unjuk Kerja / Keterampilan Praktik
+  const psychomotorKeywords = [
+    'mempraktikkan', 'melakukan', 'memeragakan', 'bermain', 'senam', 'lari',
+    'melempar', 'menendang', 'menangkap', 'melompat', 'gerak dasar', 'lokomotor',
+    'nonlokomotor', 'manipulatif', 'keterampilan gerak', 'kebugaran', 'renang',
+    'atletik', 'senam lantai', 'unjuk kerja', 'simulasi', 'demonstrasi',
+    'memainkan alat', 'berpidato', 'membaca puisi', 'menyanyikan', 'menari',
+    'pola gerak', 'aktivitas jasmani', 'mengoperasikan', 'merangkai alat', 'percobaan'
+  ];
+
+  // 2. Indikator Kognitif / Konseptual
+  const cognitiveKeywords = [
+    'menjelaskan', 'mengidentifikasi', 'menganalisis', 'memahami', 'menyebutkan',
+    'membedakan', 'menguraikan', 'menghitung', 'menentukan', 'merumuskan',
+    'menyimpulkan', 'menafsirkan', 'mengklasifikasikan', 'mengevaluasi konsep',
+    'konsep', 'teori', 'prinsip', 'aturan', 'prosedur', 'menelaah'
+  ];
+
+  // 3. Indikator Produk / Projek / Karya
+  const productKeywords = [
+    'membuat karya', 'menciptakan karya', 'menggambar karya', 'menulis laporan',
+    'merancang produk', 'membuat produk', 'karya seni', 'projek', 'poster',
+    'laporan hasil', 'produk kerajinan', 'makalah'
+  ];
+
+  const hasPsychomotor = psychomotorKeywords.some((kw) => fullText.includes(kw));
+  const hasCognitive = cognitiveKeywords.some((kw) => fullText.includes(kw));
+  const hasProduct = productKeywords.some((kw) => fullText.includes(kw));
+
+  const recommendedTypes: AssessmentInstrumentType[] = [];
+
+  if (hasPsychomotor && hasCognitive) {
+    // Campuran motorik & kognitif -> multi-instrumen
+    recommendedTypes.push('PERFORMANCE', 'WRITTEN_TEST');
+  } else if (hasPsychomotor) {
+    // Psikomotor murni / kinerja gerak -> PERFORMANCE & OBSERVATION
+    recommendedTypes.push('PERFORMANCE', 'OBSERVATION');
+  } else if (hasProduct) {
+    // Produk / proyek
+    recommendedTypes.push('PRODUCT', 'ASSIGNMENT');
+  } else if (hasCognitive) {
+    // Kognitif murni -> WRITTEN_TEST
+    recommendedTypes.push('WRITTEN_TEST');
+  } else {
+    // Fallback: Asesmen formatif awal/standar
+    recommendedTypes.push('WRITTEN_TEST');
+  }
+
+  const now = Date.now();
+  return recommendedTypes.map((type, idx) => ({
+    id: `inst-${type.toLowerCase()}-${now}-${idx}`,
+    type,
+    label: getInstrumentLabel(type),
+  }));
+}
+
+export interface TargetTPSelectionResult {
+  status: 'RESOLVED' | 'AMBIGUOUS' | 'NO_TP';
+  selectedTpId?: string;
+  selectedTpIds: string[];
+  candidateIds?: string[];
+  reason?: string;
+}
+
+/**
+ * Resolusi seleksi TP target asesmen yang aman tanpa first-match fallback (Audit 9A/Recovery B).
+ * 0 MATCH = FAIL / NO_TP
+ * 1 MATCH = OK / RESOLVED
+ * >1 MATCH = AMBIGUOUS / REQUIRE USER SELECTION
+ */
+export function resolveTargetTPSelection(
+  tpsOrParams:
+    | { id: string; code?: string; statement?: string }[]
+    | {
+        academicSetting?: AcademicSetting;
+        tp?: TPData | null;
+        k13Analysis?: K13Analysis | null;
+        tps?: { id: string; code?: string; statement?: string }[];
+        targetTpId?: string;
+        explicitTpId?: string;
+        learningPlans?: LearningPlan[];
+        atp?: ATPData;
+      },
+  context?: {
+    explicitTpId?: string;
+    targetTpId?: string;
+    learningPlans?: LearningPlan[];
+    atp?: ATPData;
+  }
+): TargetTPSelectionResult {
+  let tps: { id: string; code?: string; statement?: string }[] = [];
+  let explicitId: string | undefined = context?.explicitTpId || context?.targetTpId;
+  let learningPlans: LearningPlan[] | undefined = context?.learningPlans;
+
+  if (Array.isArray(tpsOrParams)) {
+    tps = tpsOrParams;
+  } else if (tpsOrParams && typeof tpsOrParams === 'object') {
+    explicitId = explicitId || tpsOrParams.targetTpId || tpsOrParams.explicitTpId;
+    learningPlans = learningPlans || tpsOrParams.learningPlans;
+    if (tpsOrParams.tps) {
+      tps = tpsOrParams.tps;
+    } else if (tpsOrParams.tp?.items) {
+      tps = tpsOrParams.tp.items;
+    } else if (tpsOrParams.k13Analysis?.items) {
+      tps = tpsOrParams.k13Analysis.items.map((k) => ({
+        id: k.id,
+        code: k.kd,
+        statement: k.tujuanPembelajaran || k.materi || k.indikator || k.kd || k.id,
+      }));
+    }
+  }
+
+  if (!tps || tps.length === 0) {
+    return {
+      status: 'NO_TP',
+      selectedTpId: undefined,
+      selectedTpIds: [],
+      candidateIds: [],
+      reason: 'Tidak ada Tujuan Pembelajaran kanonikal yang tersedia.',
+    };
+  }
+
+  // 1. Explicit ID if provided
+  if (explicitId) {
+    const found = tps.find((t) => t.id === explicitId);
+    if (found) {
+      return {
+        status: 'RESOLVED',
+        selectedTpId: found.id,
+        selectedTpIds: [found.id],
+        candidateIds: tps.map((t) => t.id),
+      };
+    }
+  }
+
+  // 2. Unambiguous single TP in LearningPlan context
+  if (learningPlans && learningPlans.length === 1) {
+    const lp = learningPlans[0];
+    if (lp.tpIds && lp.tpIds.length === 1) {
+      const found = tps.find((t) => t.id === lp.tpIds[0]);
+      if (found) {
+        return {
+          status: 'RESOLVED',
+          selectedTpId: found.id,
+          selectedTpIds: [found.id],
+          candidateIds: tps.map((t) => t.id),
+        };
+      }
+    }
+  }
+
+  // 3. Exactly 1 TP in total -> OK
+  if (tps.length === 1) {
+    return {
+      status: 'RESOLVED',
+      selectedTpId: tps[0].id,
+      selectedTpIds: [tps[0].id],
+      candidateIds: [tps[0].id],
+    };
+  }
+
+  // 4. >1 TP without explicit/unambiguous context -> AMBIGUOUS (no guessing!)
+  return {
+    status: 'AMBIGUOUS',
+    selectedTpId: undefined,
+    selectedTpIds: [],
+    candidateIds: tps.map((t) => t.id),
+    reason: `Terdapat ${tps.length} Tujuan Pembelajaran. Harap pilih Tujuan Pembelajaran yang menjadi fokus asesmen.`,
+  };
+}
+
+export interface DeriveAutoDraftAssessmentPlanParams {
+  academicSetting: AcademicSetting;
+  workspaceId?: string;
+  tp?: TPData | null;
+  k13Analysis?: K13Analysis | null;
+  assessmentCriteria?: AssessmentCriterion[] | null;
+  learningPlans?: LearningPlan[] | null;
+  atp?: ATPData | null;
+  targetObjectiveId?: string;
+  targetTpId?: string;
+  purpose?: AssessmentPurpose;
+  timing?: AssessmentTiming;
+  title?: string;
+}
+
+export interface DeriveAutoDraftAssessmentPlanResult {
+  plan: AssessmentPlan;
+  status: 'DRAFT_READY' | 'DRAFT_NEEDS_SELECTION' | 'CANNOT_DRAFT';
+  resolutionStatus: 'EXACT' | 'AMBIGUOUS' | 'NO_TP';
+  hasCriteria: boolean;
+  warnings: string[];
+  recommendations: {
+    instruments: AssessmentInstrumentRef[];
+    suggestedPurpose: AssessmentPurpose;
+    suggestedTiming: AssessmentTiming;
+  };
+}
+
+/**
+ * Menyusun draf rencana asesmen secara otomatis dari data kanonikal (AcademicSetting + TP/KD).
+ * Tidak memerlukan kalender / alokasi waktu untuk menyusun DRAFT pedagogis.
+ * Menghasilkan workflowStatus 'DRAFT' yang wajib ditinjau guru sebelum SIAP.
+ */
+export function deriveAutoDraftAssessmentPlan(
+  params: DeriveAutoDraftAssessmentPlanParams
+): DeriveAutoDraftAssessmentPlanResult {
+  const warnings: string[] = [];
+  const setting = params.academicSetting;
+
+  // 1. Kumpulkan objectives kanonikal
+  let objectives: { id: string; code: string; statement: string; competence?: string; contentScope?: string }[] = [];
+
+  if (isMerdeka(setting) && params.tp?.items) {
+    objectives = params.tp.items.map((item) => ({
+      id: item.id,
+      code: item.code,
+      statement: item.statement || item.description || (item.competence ? `${item.competence} ${item.contentScope || ''}`.trim() : item.code),
+      competence: item.competence,
+      contentScope: item.contentScope,
+    }));
+  } else if (isK13(setting) && params.k13Analysis?.items) {
+    objectives = params.k13Analysis.items.map((item) => ({
+      id: item.id,
+      code: item.kd || '',
+      statement: item.tujuanPembelajaran || item.materi || item.indikator || item.kd || item.id,
+      competence: item.indikator || item.materi || '',
+      contentScope: item.materi || '',
+    }));
+  }
+
+  if (objectives.length === 0) {
+    const emptyDraft = createEmptyAssessmentPlan({
+      academicSettingId: setting.id,
+      workspaceId: params.workspaceId,
+      title: params.title || 'Draf Rencana Asesmen',
+    });
+    return {
+      plan: emptyDraft,
+      status: 'CANNOT_DRAFT',
+      resolutionStatus: 'NO_TP',
+      hasCriteria: false,
+      warnings: ['Data kanonikal Tujuan Pembelajaran (TP) atau KD belum tersedia pada alur hulu.'],
+      recommendations: {
+        instruments: [],
+        suggestedPurpose: 'FORMATIVE',
+        suggestedTiming: 'POST',
+      },
+    };
+  }
+
+  // 2. Resolusi target objective
+  let resolvedObj: { id: string; code: string; statement: string; competence?: string; contentScope?: string } | undefined;
+
+  const targetId = params.targetObjectiveId || params.targetTpId;
+  if (targetId) {
+    resolvedObj = objectives.find((obj) => obj.id === targetId);
+  } else {
+    const selection = resolveTargetTPSelection(objectives, {
+      learningPlans: params.learningPlans || undefined,
+      atp: params.atp || undefined,
+    });
+    if (selection.status === 'RESOLVED' && selection.selectedTpIds.length > 0) {
+      resolvedObj = objectives.find((obj) => obj.id === selection.selectedTpIds[0]);
+    }
+  }
+
+  // Rekomendasi purpose & timing
+  const suggestedPurpose: AssessmentPurpose = params.purpose || 'FORMATIVE';
+  const suggestedTiming: AssessmentTiming = params.timing || 'POST';
+
+  if (!resolvedObj) {
+    // Ambigu (>1 TP dan belum ada target eksplisit)
+    const emptyDraft = createEmptyAssessmentPlan({
+      academicSettingId: setting.id,
+      workspaceId: params.workspaceId,
+      title: params.title || 'Draf Rencana Asesmen',
+      purpose: suggestedPurpose,
+      timing: suggestedTiming,
+      scopeType: 'TP',
+      tpIds: [],
+      criterionIds: [],
+      instruments: [],
+    });
+    return {
+      plan: {
+        ...emptyDraft,
+        needsReview: true,
+        reviewReason: 'Terdapat lebih dari satu Tujuan Pembelajaran. Harap guru memilih TP target asesmen.',
+      },
+      status: 'DRAFT_NEEDS_SELECTION',
+      resolutionStatus: 'AMBIGUOUS',
+      hasCriteria: false,
+      warnings: ['Terdapat lebih dari satu TP. Harap tentukan TP target asesmen secara eksplisit.'],
+      recommendations: {
+        instruments: [],
+        suggestedPurpose,
+        suggestedTiming,
+      },
+    };
+  }
+
+  // 3. Resolusi instrumen berdasarkan karakteristik kompetensi
+  const recommendedInstruments = recommendInstrumentsForCompetency({
+    competence: resolvedObj.competence,
+    statement: resolvedObj.statement,
+    contentScope: resolvedObj.contentScope,
+    subject: setting.subject,
+  });
+
+  // 4. Hubungkan kriteria KKTP kanonikal jika tersedia
+  const matchingCriteria = (params.assessmentCriteria || []).filter((c) => c.tpId === resolvedObj!.id);
+  const criterionIds = matchingCriteria.map((c) => c.id);
+
+  if (matchingCriteria.length === 0) {
+    warnings.push('Kriteria ketercapaian (KKTP) belum tersedia untuk TP ini.');
+  }
+
+  // 5. Susun judul otomatis
+  const defaultTitle = params.title || (
+    resolvedObj.code
+      ? `Asesmen Formatif: [${resolvedObj.code}] ${resolvedObj.statement.slice(0, 50)}${resolvedObj.statement.length > 50 ? '...' : ''}`
+      : `Asesmen Formatif: ${resolvedObj.statement.slice(0, 50)}...`
+  );
+
+  const plan = createAIDraftAssessmentPlan({
+    academicSettingId: setting.id,
+    workspaceId: params.workspaceId,
+    title: defaultTitle,
+    purpose: suggestedPurpose,
+    timing: suggestedTiming,
+    scopeType: 'TP',
+    tpIds: [resolvedObj.id],
+    criterionIds,
+    instruments: recommendedInstruments,
+    displayLabel: resolvedObj.code ? `Asesmen ${resolvedObj.code}` : undefined,
+  });
+
+  return {
+    plan: {
+      ...plan,
+      workflowStatus: 'DRAFT',
+      needsReview: true,
+      reviewReason: 'Draf rencana asesmen disusun otomatis dari data kanonikal. Harap guru meninjau dan mengonfirmasi menjadi SIAP.',
+      provenance: {
+        generatedBy: 'SYSTEM',
+        engine: 'AUTO_DRAFT',
+      },
+    },
+    status: 'DRAFT_READY',
+    resolutionStatus: 'EXACT',
+    hasCriteria: matchingCriteria.length > 0,
+    warnings,
+    recommendations: {
+      instruments: recommendedInstruments,
+      suggestedPurpose,
+      suggestedTiming,
+    },
+  };
+}
+
+/**
+ * Menghasilkan kumpulan Draf Rencana Asesmen untuk seluruh TP/KD kanonikal yang belum memiliki rencana.
+ * Digunakan untuk alur "AUTO GENERATE FIRST".
+ */
+export function generateAutoDraftPlansFromCanonicalContext(params: {
+  academicSetting: AcademicSetting;
+  workspaceId?: string;
+  tp?: TPData | null;
+  k13Analysis?: K13Analysis | null;
+  assessmentCriteria?: AssessmentCriterion[] | null;
+  learningPlans?: LearningPlan[] | null;
+  atp?: ATPData | null;
+  existingPlans?: AssessmentPlan[];
+}): AssessmentPlan[] {
+  const existing = params.existingPlans || [];
+  const existingTpIds = new Set<string>();
+  for (const p of existing) {
+    (p.tpIds || []).forEach((id) => existingTpIds.add(id));
+  }
+
+  const newPlans: AssessmentPlan[] = [];
+
+  if (isMerdeka(params.academicSetting) && params.tp?.items) {
+    for (const item of params.tp.items) {
+      if (existingTpIds.has(item.id)) continue;
+
+      const derived = deriveAutoDraftAssessmentPlan({
+        ...params,
+        targetObjectiveId: item.id,
+      });
+      if (derived.status === 'DRAFT_READY') {
+        newPlans.push(derived.plan);
+      }
+    }
+  } else if (isK13(params.academicSetting) && params.k13Analysis?.items) {
+    for (const item of params.k13Analysis.items) {
+      if (existingTpIds.has(item.id)) continue;
+
+      const derived = deriveAutoDraftAssessmentPlan({
+        ...params,
+        targetObjectiveId: item.id,
+      });
+      if (derived.status === 'DRAFT_READY') {
+        newPlans.push(derived.plan);
+      }
+    }
+  }
+
+  return newPlans;
+}
+
