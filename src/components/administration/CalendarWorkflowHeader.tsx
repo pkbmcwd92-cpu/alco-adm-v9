@@ -303,14 +303,14 @@ export const CalendarWorkflowHeader: React.FC<CalendarWorkflowHeaderProps> = ({
 
                 <div className="flex items-center justify-between text-[11px] pt-2 border-t border-emerald-100/80 text-emerald-950">
                   <span className="font-medium text-emerald-800">Tahun Ajaran {academicYear || '-'}</span>
-                  {(!nationalProvenances || nationalProvenances.length <= 1) && (
+                  {(!nationalProvenances || nationalProvenances.length <= 1) && nationalProvenance?.sourceUrl && (
                     <a
-                      href={nationalProvenance?.sourceUrl || 'https://jdih.kemenag.go.id'}
+                      href={nationalProvenance.sourceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-900 font-semibold hover:underline"
                     >
-                      <span>Portal JDIH SKB</span>
+                      <span>Portal Resmi SKB</span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
                   )}

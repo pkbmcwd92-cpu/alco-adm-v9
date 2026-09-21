@@ -18,9 +18,33 @@ function assert(condition: boolean, message: string) {
 
 console.log('--- STARTING CALENDAR WORKFLOW REFACTOR & EXACT LEGAL SOURCE TESTS ---');
 
-// Test 1: Exact Legal Metadata Verification for 2026 & 2027
+// Test 1: Exact Legal Metadata & Official URL Verification for 2024, 2025, 2026, 2027
 {
-  console.log('\n--- 1. Exact Legal Source Metadata Verification (2026 & 2027) ---');
+  console.log('\n--- 1. Exact Legal Source Metadata & Official URL Verification ---');
+  
+  // 2024
+  const source2024 = OFFICIAL_NATIONAL_HOLIDAY_SOURCES[2024];
+  assert(Boolean(source2024), '2024 Official National Holiday Source must exist');
+  assert(source2024.documentNumber === 'SKB 3 Menteri No. 855 Tahun 2023, No. 3 Tahun 2023, No. 4 Tahun 2023', '2024 SKB numbers');
+  assert(source2024.sourceUrl.startsWith('https://'), '2024 sourceUrl must start with https://');
+  assert(
+    !source2024.sourceUrl.includes('jdih.kemenag.go.id/dokumen/skb-3-menteri-libur-nasional-dan-cuti-bersama'),
+    '2024 sourceUrl must not use assumed JDIH slug'
+  );
+  assert(source2024.verificationState === 'VERIFIED', '2024 verificationState must be VERIFIED');
+
+  // 2025
+  const source2025 = OFFICIAL_NATIONAL_HOLIDAY_SOURCES[2025];
+  assert(Boolean(source2025), '2025 Official National Holiday Source must exist');
+  assert(source2025.documentNumber === 'SKB 3 Menteri No. 1017 Tahun 2024, No. 2 Tahun 2024, No. 2 Tahun 2024', '2025 SKB numbers');
+  assert(source2025.sourceUrl.startsWith('https://'), '2025 sourceUrl must start with https://');
+  assert(
+    !source2025.sourceUrl.includes('jdih.kemenag.go.id/dokumen/skb-3-menteri-libur-nasional-dan-cuti-bersama'),
+    '2025 sourceUrl must not use assumed JDIH slug'
+  );
+  assert(source2025.verificationState === 'VERIFIED', '2025 verificationState must be VERIFIED');
+
+  // 2026
   const source2026 = OFFICIAL_NATIONAL_HOLIDAY_SOURCES[2026];
   assert(Boolean(source2026), '2026 Official National Holiday Source must exist');
   assert(
@@ -36,10 +60,19 @@ console.log('--- STARTING CALENDAR WORKFLOW REFACTOR & EXACT LEGAL SOURCE TESTS 
     '2026 publicationDate must be 2025-09-19'
   );
   assert(
+    source2026.sourceUrl === 'https://www.setneg.go.id/baca/index/pemerintah_tetapkan_hari_libur_nasional_dan_cuti_bersama_tahun_2026',
+    '2026 sourceUrl must be exact official government publication URL'
+  );
+  assert(
+    !source2026.sourceUrl.includes('jdih.kemenag.go.id/dokumen/skb-3-menteri-libur-nasional-dan-cuti-bersama'),
+    '2026 sourceUrl must not use assumed JDIH slug'
+  );
+  assert(
     source2026.verificationState === 'VERIFIED',
     '2026 verificationState must be VERIFIED'
   );
 
+  // 2027
   const source2027 = OFFICIAL_NATIONAL_HOLIDAY_SOURCES[2027];
   assert(Boolean(source2027), '2027 Official National Holiday Source must exist');
   assert(
@@ -55,20 +88,26 @@ console.log('--- STARTING CALENDAR WORKFLOW REFACTOR & EXACT LEGAL SOURCE TESTS 
     '2027 publicationDate must be 2026-09-15'
   );
   assert(
+    source2027.sourceUrl === 'https://www.kemenkopmk.go.id/skb-3-menteri-libur-nasional-dan-cuti-bersama-2027',
+    '2027 sourceUrl must be exact official government publication URL'
+  );
+  assert(
+    !source2027.sourceUrl.includes('jdih.kemenag.go.id/dokumen/skb-3-menteri-libur-nasional-dan-cuti-bersama'),
+    '2027 sourceUrl must not use assumed JDIH slug'
+  );
+  assert(
     source2027.verificationState === 'VERIFIED',
     '2027 verificationState must be VERIFIED'
   );
 
-  // Verify no stale document numbers in derived records
-  const hasStale2026 = OFFICIAL_NATIONAL_HOLIDAYS.some(
-    h => h.year === 2026 && (h.documentNumber?.includes('1102/2025') || h.documentNumber?.includes('3/2025'))
-  );
-  assert(!hasStale2026, 'No 2026 holiday records contain obsolete 1102/2025 metadata');
-
-  const hasStale2027 = OFFICIAL_NATIONAL_HOLIDAYS.some(
-    h => h.year === 2027 && (h.documentNumber?.includes('1205/2026, No. 4/2026') || h.documentNumber?.includes('4/2026'))
-  );
-  assert(!hasStale2027, 'No 2027 holiday records contain obsolete 1205/2026, 4/2026 metadata');
+  // Verify all derived national holiday records have exact canonical URL
+  for (const h of OFFICIAL_NATIONAL_HOLIDAYS) {
+    const canonicalSource = OFFICIAL_NATIONAL_HOLIDAY_SOURCES[h.year];
+    assert(
+      h.sourceUrl === canonicalSource.sourceUrl,
+      `Holiday ${h.date} (${h.name}) sourceUrl must exactly match canonical source for year ${h.year}`
+    );
+  }
 }
 
 // Test 2: Auto Resolve for Jawa Barat 2026/2027 Semester 1 (Year 2026 overlay)
@@ -101,6 +140,10 @@ console.log('--- STARTING CALENDAR WORKFLOW REFACTOR & EXACT LEGAL SOURCE TESTS 
     'National provenance must have exact 2026 SKB number'
   );
   assert(
+    res.calendar!.nationalProvenance?.sourceUrl === OFFICIAL_NATIONAL_HOLIDAY_SOURCES[2026].sourceUrl,
+    'National provenance sourceUrl must match canonical 2026 URL'
+  );
+  assert(
     res.calendar!.nationalProvenances?.length === 1,
     'Semester 1 only has 2026 national holidays, so nationalProvenances length must be 1'
   );
@@ -110,7 +153,9 @@ console.log('--- STARTING CALENDAR WORKFLOW REFACTOR & EXACT LEGAL SOURCE TESTS 
   assert(hutRi !== undefined, 'HUT RI 2026-08-17 must be present');
   assert(hutRi!.sourceType === 'NATIONAL_HOLIDAY_OVERLAY', 'HUT RI must have source NATIONAL_HOLIDAY_OVERLAY');
   assert(hutRi!.sourceDocumentNumber === 'SKB 3 Menteri No. 1497 Tahun 2025, No. 2 Tahun 2025, No. 5 Tahun 2025', 'HUT RI must have 2026 SKB number');
+  assert(hutRi!.sourceUrl === OFFICIAL_NATIONAL_HOLIDAY_SOURCES[2026].sourceUrl, 'HUT RI sourceUrl must match canonical 2026 URL');
   assert(hutRi!.sourceProvenances?.length === 1, 'HUT RI must have 1 source provenance');
+  assert(hutRi!.sourceProvenances![0].sourceUrl === OFFICIAL_NATIONAL_HOLIDAY_SOURCES[2026].sourceUrl, 'HUT RI provenance sourceUrl must match canonical 2026 URL');
 }
 
 // Test 3: Auto Resolve for Jawa Barat 2026/2027 Semester 2 (Year 2027 overlay)
@@ -134,9 +179,19 @@ console.log('--- STARTING CALENDAR WORKFLOW REFACTOR & EXACT LEGAL SOURCE TESTS 
     'Semester 2 national provenance must have exact 2027 SKB number'
   );
   assert(
+    resSem2.calendar!.nationalProvenance?.sourceUrl === OFFICIAL_NATIONAL_HOLIDAY_SOURCES[2027].sourceUrl,
+    'Semester 2 national provenance sourceUrl must match canonical 2027 URL'
+  );
+  assert(
     resSem2.calendar!.nationalProvenances?.length === 1,
     'Semester 2 only has 2027 national holidays, so nationalProvenances length must be 1'
   );
+
+  // Check Isra Mikraj 2027-01-05
+  const israMikraj2027 = resSem2.days.find(d => d.date === '2027-01-05');
+  assert(israMikraj2027 !== undefined, 'Isra Mikraj 2027-01-05 must be present');
+  assert(israMikraj2027!.sourceUrl === OFFICIAL_NATIONAL_HOLIDAY_SOURCES[2027].sourceUrl, '2027 event sourceUrl must match canonical 2027 URL');
+  assert(israMikraj2027!.sourceProvenances![0].sourceUrl === OFFICIAL_NATIONAL_HOLIDAY_SOURCES[2027].sourceUrl, '2027 event provenance sourceUrl must match canonical 2027 URL');
 }
 
 // Test 4: Provenance Deduplication Helper
@@ -157,7 +212,7 @@ console.log('--- STARTING CALENDAR WORKFLOW REFACTOR & EXACT LEGAL SOURCE TESTS 
     sourceType: 'NATIONAL_HOLIDAY_OVERLAY',
     sourceName: 'SKB 3 Menteri',
     sourceAuthority: 'Kemenag, Kemenaker, PANRB',
-    sourceUrl: 'https://jdih.kemenag.go.id',
+    sourceUrl: 'https://www.setneg.go.id/baca/index/pemerintah_tetapkan_hari_libur_nasional_dan_cuti_bersama_tahun_2026',
     region: 'Nasional',
     academicYear: '2026/2027',
     documentNumber: 'SKB No. 1497/2025',
