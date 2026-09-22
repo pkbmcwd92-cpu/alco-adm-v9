@@ -48,9 +48,25 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
   onSaveSetting,
   onNextStep,
 }) => {
-  const initialPhase = getPhaseFromGrade(setting.level || 'SD', setting.grade || 'Kelas 1');
+  const safeSetting = useMemo<AcademicSetting>(() => {
+    if (setting) return setting;
+    return {
+      id: `acad-temp-${Date.now()}`,
+      curriculum: 'Kurikulum Merdeka',
+      curriculumType: 'KURIKULUM_MERDEKA',
+      academicYear: '2024/2025',
+      semester: '1 (Ganjil)',
+      level: profile?.defaultLevel || 'SD',
+      grade: 'Kelas 1',
+      phase: 'Fase A',
+      subject: profile?.defaultSubject || 'Bahasa Indonesia',
+      totalHoursPerWeek: 4,
+    };
+  }, [setting, profile]);
+
+  const initialPhase = getPhaseFromGrade(safeSetting.level || 'SD', safeSetting.grade || 'Kelas 1');
   const [formData, setFormData] = useState<AcademicSetting>({
-    ...setting,
+    ...safeSetting,
     phase: initialPhase,
   });
   const [workspaceName, setWorkspaceName] = useState<string>(workspace?.name || '');
@@ -71,37 +87,37 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
 
   // Sync state if prop changes (e.g. on workspace or profile switch)
   useEffect(() => {
-    const derivedPhase = getPhaseFromGrade(setting.level || 'SD', setting.grade || 'Kelas 1');
+    const derivedPhase = getPhaseFromGrade(safeSetting.level || 'SD', safeSetting.grade || 'Kelas 1');
     setFormData({
-      ...setting,
+      ...safeSetting,
       phase: derivedPhase,
     });
     setWorkspaceName(workspace?.name || '');
-    const currentSubjectList = SUBJECT_OPTIONS[setting.level || 'SD'] || [];
-    if (setting.subject && !currentSubjectList.includes(setting.subject)) {
+    const currentSubjectList = SUBJECT_OPTIONS[safeSetting.level || 'SD'] || [];
+    if (safeSetting.subject && !currentSubjectList.includes(safeSetting.subject)) {
       setIsCustomSubject(true);
     } else {
       setIsCustomSubject(false);
     }
-  }, [setting, workspace]);
+  }, [safeSetting, workspace]);
 
   // Dirty State Calculation: Check if form data or workspace name differs from saved setting
   const isDirty = useMemo(() => {
     const derivedPhase = getPhaseFromGrade(formData.level || 'SD', formData.grade || 'Kelas 1');
     const isSettingChanged =
-      formData.curriculum !== setting.curriculum ||
-      formData.academicYear !== setting.academicYear ||
-      formData.semester !== setting.semester ||
-      formData.level !== setting.level ||
-      formData.grade !== setting.grade ||
-      formData.subject !== setting.subject ||
-      (formData.totalHoursPerWeek || 4) !== (setting.totalHoursPerWeek || 4) ||
+      formData.curriculum !== safeSetting.curriculum ||
+      formData.academicYear !== safeSetting.academicYear ||
+      formData.semester !== safeSetting.semester ||
+      formData.level !== safeSetting.level ||
+      formData.grade !== safeSetting.grade ||
+      formData.subject !== safeSetting.subject ||
+      (formData.totalHoursPerWeek || 4) !== (safeSetting.totalHoursPerWeek || 4) ||
       formData.phase !== derivedPhase;
 
     const isNameChanged = workspace ? workspaceName.trim() !== workspace.name.trim() : false;
 
     return isSettingChanged || isNameChanged;
-  }, [formData, setting, workspace, workspaceName]);
+  }, [formData, safeSetting, workspace, workspaceName]);
 
   // Handle Level Change (automatically recalculates grade, derived phase, and default subject)
   const handleLevelChange = (level: 'SD' | 'SMP' | 'SMA' | 'SMK') => {

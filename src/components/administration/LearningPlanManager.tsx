@@ -94,7 +94,7 @@ export function resolveAvailableScopes(
 
       return {
         id: atpItem.id,
-        type: 'ATP_STEP',
+        type: 'ATP_STEP' as const,
         title: `Langkah ${stepNo}: ${material}`,
         stepNumber: stepNo,
         tpCode: linkedTp.code,
@@ -107,10 +107,10 @@ export function resolveAvailableScopes(
       };
     });
 
-  const singleTpScopes = availableTps.filter((tpItem) => !representedTpIds.has(tpItem.id)).map((tpItem) => {
+  const singleTpScopes: LearningPlanScopeUnit[] = availableTps.filter((tpItem) => !representedTpIds.has(tpItem.id)).map((tpItem) => {
     return {
       id: tpItem.id,
-      type: 'SINGLE_TP',
+      type: 'SINGLE_TP' as const,
       title: tpItem.code ? `[${tpItem.code}] ${tpItem.statement}` : tpItem.statement,
       tpCode: tpItem.code || undefined,
       tpItem: tpItem,

@@ -706,7 +706,7 @@ Kembalikan output JSON sesuai schema.`;
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
-          required: ['learningExperiences', 'assessmentPlan'],
+          required: ['learningExperiences'],
           properties: {
             title: { type: Type.STRING },
             topic: { type: Type.STRING },

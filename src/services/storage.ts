@@ -736,11 +736,11 @@ export function createWorkspace(params: {
 
   const newSettingId = `acad-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   
-  const level = params.setting.level || profile.defaultLevel || '';
-  const grade = params.setting.grade?.trim() || '';
+  const level = params.setting?.level || profile.defaultLevel || '';
+  const grade = params.setting?.grade?.trim() || '';
   const derivedPhase = (level && grade) ? getPhaseFromGrade(level, grade) : '';
 
-  let curriculum = params.setting.curriculum?.trim() || '';
+  let curriculum = params.setting?.curriculum?.trim() || '';
   let curType: CurriculumType | undefined = undefined;
 
   if (curriculum === 'Kurikulum 2013' || curriculum === 'K13') {
@@ -753,10 +753,10 @@ export function createWorkspace(params: {
     curType = getCurriculumTypeFromSetting({ curriculum });
   }
 
-  const subject = params.setting.subject?.trim() || profile.defaultSubject || '';
-  const academicYear = params.setting.academicYear?.trim() || '';
-  const semester = params.setting.semester || '';
-  const totalHoursPerWeek = params.setting.totalHoursPerWeek ? Number(params.setting.totalHoursPerWeek) : undefined;
+  const subject = params.setting?.subject?.trim() || profile.defaultSubject || '';
+  const academicYear = params.setting?.academicYear?.trim() || '';
+  const semester = params.setting?.semester || '';
+  const totalHoursPerWeek = params.setting?.totalHoursPerWeek ? Number(params.setting.totalHoursPerWeek) : undefined;
 
   const newSetting: AcademicSetting = {
     id: newSettingId,

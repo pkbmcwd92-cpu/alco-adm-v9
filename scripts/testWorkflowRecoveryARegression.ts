@@ -10,6 +10,7 @@ import {
   normalizeDeepLearningContext,
   isSubstantiveLearningPlanChange,
   normalizeLearningExperiencePhase,
+  validateAILearningPlanPayload,
 } from '../src/services/learningPlanService';
 import { AcademicSetting, TPData, ATPData, LearningPlan } from '../src/types';
 import { getCurriculumTypeFromSetting } from '../src/services/curriculumRouter';
@@ -766,6 +767,96 @@ runTest('Contract: server normalizeExperiencePhase and learningPlanService norma
       `Mismatch for input ${JSON.stringify(input)}: server=${fromServer}, service=${fromService}`
     );
   }
+});
+
+// Recovery A.1 Contract & Validator Regression Tests (Test A - Test D)
+runTest('Recovery A.1 Test A: server.ts generate-learning-plan responseSchema mandates learningExperiences at top-level', () => {
+  const serverSource = fs.readFileSync('server.ts', 'utf-8');
+  const endpointIndex = serverSource.indexOf("app.post('/api/ai/generate-learning-plan'");
+  assert.ok(endpointIndex !== -1, 'Endpoint /api/ai/generate-learning-plan must exist');
+  const nextEndpointIndex = serverSource.indexOf("app.post('/api/ai/generate-assessment-package'");
+  const endpointCode = serverSource.slice(
+    endpointIndex,
+    nextEndpointIndex !== -1 ? nextEndpointIndex : endpointIndex + 10000
+  );
+  assert.ok(
+    endpointCode.includes("required: ['learningExperiences']") || endpointCode.includes('required: ["learningExperiences"]'),
+    'Top-level responseSchema must explicitly specify required: [\'learningExperiences\']'
+  );
+});
+
+runTest('Recovery A.1 Test B: Payload without learningExperiences is rejected by validateAILearningPlanPayload', () => {
+  const payloadMissing = {
+    title: 'Draf Modul Ajar',
+    topic: 'Teks Deskripsi',
+  };
+  const valMissing = validateAILearningPlanPayload(payloadMissing);
+  assert.strictEqual(valMissing.isValid, false, 'Payload missing learningExperiences must be invalid');
+  assert.ok(
+    valMissing.reason?.includes('learningExperiences'),
+    'Error reason must mention learningExperiences'
+  );
+
+  const payloadEmpty = {
+    title: 'Draf Modul Ajar',
+    learningExperiences: [],
+  };
+  const valEmpty = validateAILearningPlanPayload(payloadEmpty);
+  assert.strictEqual(valEmpty.isValid, false, 'Payload with empty learningExperiences must be invalid');
+});
+
+runTest('Recovery A.1 Test C: Valid payload with learningExperiences (UNDERSTAND, APPLY, REFLECT) is accepted', () => {
+  const validPayload = {
+    title: 'Modul Ajar Teks Deskripsi',
+    topic: 'Teks Deskripsi',
+    learningExperiences: [
+      {
+        phase: 'UNDERSTAND',
+        description: 'Murid menyimak dan mengamati contoh teks deskripsi',
+      },
+      {
+        phase: 'APPLY',
+        description: 'Murid menyusun draft teks deskripsi secara mandiri',
+      },
+      {
+        phase: 'REFLECT',
+        description: 'Murid menyimpulkan ciri-ciri teks deskripsi',
+      },
+    ],
+  };
+  const val = validateAILearningPlanPayload(validPayload);
+  assert.strictEqual(val.isValid, true, 'Valid payload must pass validation');
+  assert.strictEqual(validPayload.learningExperiences.length, 3);
+  assert.strictEqual(validPayload.learningExperiences[0].phase, 'UNDERSTAND');
+  assert.strictEqual(validPayload.learningExperiences[1].phase, 'APPLY');
+  assert.strictEqual(validPayload.learningExperiences[2].phase, 'REFLECT');
+  assert.strictEqual((validPayload.learningExperiences[0] as any).id, 'exp-ai-1');
+});
+
+runTest('Recovery A.1 Test D: Indonesian phase normalization (Memahami, Mengaplikasikan, Merefleksikan) remains valid', () => {
+  const indoPayload = {
+    title: 'Modul Ajar Teks Deskripsi',
+    topic: 'Teks Deskripsi',
+    learningExperiences: [
+      {
+        phase: 'Memahami',
+        description: 'Murid mengamati teks deskripsi',
+      },
+      {
+        phase: 'Mengaplikasikan',
+        description: 'Murid menulis teks deskripsi',
+      },
+      {
+        phase: 'Merefleksikan',
+        description: 'Murid melakukan refleksi',
+      },
+    ],
+  };
+  const val = validateAILearningPlanPayload(indoPayload);
+  assert.strictEqual(val.isValid, true, 'Indonesian phase payload must pass validation and be normalized');
+  assert.strictEqual(indoPayload.learningExperiences[0].phase, 'UNDERSTAND');
+  assert.strictEqual(indoPayload.learningExperiences[1].phase, 'APPLY');
+  assert.strictEqual(indoPayload.learningExperiences[2].phase, 'REFLECT');
 });
 
 console.log(`\nAll ${totalTests} Workflow Recovery A Regression tests PASSED successfully!`);

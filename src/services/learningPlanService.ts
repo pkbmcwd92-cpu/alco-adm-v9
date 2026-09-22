@@ -240,25 +240,64 @@ export function normalizeDeepLearningContext(raw: any): DeepLearningContext | un
 
 function normalizeAIAssessmentItems(rawItems: any, type: AssessmentPlanItem['type'], tpIds: string[]): AssessmentPlanItem[] {
   if (!Array.isArray(rawItems)) return [];
-  return rawItems
-    .filter((item) => item && typeof item === 'object')
-    .map((item, idx) => {
-      const description = typeof item.description === 'string' ? item.description.trim() : '';
-      const technique = typeof item.technique === 'string' ? item.technique.trim() : undefined;
-      const method = typeof item.method === 'string' ? item.method.trim() : undefined;
-      const instrument = typeof item.instrument === 'string' ? item.instrument.trim() : undefined;
-      if (!description && !technique && !method && !instrument) return null;
-      return {
-        id: `asm-${type.toLowerCase()}-${idx + 1}-${Date.now().toString(36)}`,
-        type,
-        linkedTpIds: [...tpIds],
-        method,
-        technique,
-        instrument,
-        description: description || technique || method || instrument,
-      } satisfies AssessmentPlanItem;
-    })
-    .filter((item): item is AssessmentPlanItem => item !== null);
+  const results: AssessmentPlanItem[] = [];
+  for (let idx = 0; idx < rawItems.length; idx++) {
+    const item = rawItems[idx];
+    if (!item || typeof item !== 'object') continue;
+    const description = typeof item.description === 'string' ? item.description.trim() : '';
+    const technique = typeof item.technique === 'string' ? item.technique.trim() : undefined;
+    const method = typeof item.method === 'string' ? item.method.trim() : undefined;
+    const instrument = typeof item.instrument === 'string' ? item.instrument.trim() : undefined;
+    if (!description && !technique && !method && !instrument) continue;
+    results.push({
+      id: `asm-${type.toLowerCase()}-${results.length + 1}-${Date.now().toString(36)}`,
+      type,
+      linkedTpIds: [...tpIds],
+      method,
+      technique,
+      instrument,
+      description: description || technique || method || instrument,
+    });
+  }
+  return results;
+}
+
+export function validateAILearningPlanPayload(data: any): { isValid: boolean; reason?: string } {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { isValid: false, reason: 'Payload AI bukan berupa objek valid' };
+  }
+
+  if (!Array.isArray(data.learningExperiences) || data.learningExperiences.length === 0) {
+    return { isValid: false, reason: 'Daftar Pengalaman Belajar (learningExperiences) kosong atau bukan array' };
+  }
+
+  const phaseSet = new Set<string>();
+  for (let i = 0; i < data.learningExperiences.length; i++) {
+    const exp = data.learningExperiences[i];
+    if (!exp || typeof exp !== 'object') {
+      return { isValid: false, reason: `Butir pengalaman belajar ke-${i + 1} bukan berupa objek` };
+    }
+    const normalizedPhase = normalizeLearningExperiencePhase(exp.phase);
+    if (!normalizedPhase) {
+      return { isValid: false, reason: `Fase pengalaman belajar ke-${i + 1} ('${exp.phase}') tidak valid. Pilihan sah: UNDERSTAND, APPLY, REFLECT` };
+    }
+    exp.phase = normalizedPhase;
+    phaseSet.add(normalizedPhase);
+
+    if (!exp.description || typeof exp.description !== 'string' || exp.description.trim() === '') {
+      return { isValid: false, reason: `Deskripsi pengalaman belajar ke-${i + 1} kosong` };
+    }
+
+    exp.id = `exp-ai-${i + 1}`;
+  }
+
+  for (const phase of ['UNDERSTAND', 'APPLY', 'REFLECT']) {
+    if (!phaseSet.has(phase)) {
+      return { isValid: false, reason: `Pengalaman Belajar wajib memuat fase ${phase}` };
+    }
+  }
+
+  return { isValid: true };
 }
 
 export function normalizeAIAssessmentPlan(raw: any, tpIds: string[]): LearningPlan['assessmentPlan'] {
