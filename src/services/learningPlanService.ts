@@ -17,6 +17,7 @@ import {
   DeepLearningContext,
   LearningObjectiveReference,
   AssessmentPlanItem,
+  LearningResource,
 } from '../types';
 
 export const LEARNING_EXPERIENCE_PHASE_LABELS: Record<LearningExperiencePhase, string> = {
@@ -322,15 +323,16 @@ export function normalizeAIResources(raw: any): LearningPlan['resources'] {
         ? resource.title.trim()
         : (typeof resource.source === 'string' && resource.source.trim() ? resource.source.trim() : '');
       if (!title) return null;
-      return {
+      const resItem: LearningResource = {
         id: `res-ai-${idx + 1}-${Date.now().toString(36)}`,
         type: typeof resource.type === 'string' ? resource.type : undefined,
         title,
         source: typeof resource.source === 'string' ? resource.source : undefined,
         url: typeof resource.url === 'string' ? resource.url : undefined,
       };
+      return resItem;
     })
-    .filter((resource): resource is NonNullable<LearningPlan['resources']>[number] => resource !== null);
+    .filter((resource): resource is LearningResource => resource !== null);
 }
 
 export interface LearningPlanValidationResult {

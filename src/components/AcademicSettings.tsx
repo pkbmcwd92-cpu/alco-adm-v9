@@ -28,15 +28,15 @@ import {
   SUBJECT_OPTIONS,
   getPhaseFromGrade,
 } from '../data/curriculumDefaults';
-import { getCurriculumType, getSubjectJP } from '../services/jpEngine';
+import { getSubjectJP } from '../services/jpEngine';
 import { lookupOfficialWeeklyJP } from '../services/curriculumRules';
-import { isK13 } from '../services/curriculumRouter';
+import { isK13, getCurriculumTypeFromSetting } from '../services/curriculumRouter';
 import { TeacherTeachingLoadModal } from './TeacherTeachingLoadModal';
 
 interface AcademicSettingsProps {
-  setting: AcademicSetting;
-  profile: TeacherProfile;
-  workspace?: AdministrationWorkspace;
+  setting?: AcademicSetting | null;
+  profile?: TeacherProfile | null;
+  workspace?: AdministrationWorkspace | null;
   onSaveSetting: (setting: AcademicSetting, customWorkspaceName?: string) => void;
   onNextStep: () => void;
 }
@@ -48,25 +48,29 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
   onSaveSetting,
   onNextStep,
 }) => {
-  const safeSetting = useMemo<AcademicSetting>(() => {
-    if (setting) return setting;
-    return {
-      id: `acad-temp-${Date.now()}`,
-      curriculum: 'Kurikulum Merdeka',
-      curriculumType: 'KURIKULUM_MERDEKA',
-      academicYear: '2024/2025',
-      semester: '1 (Ganjil)',
-      level: profile?.defaultLevel || 'SD',
-      grade: 'Kelas 1',
-      phase: 'Fase A',
-      subject: profile?.defaultSubject || 'Bahasa Indonesia',
-      totalHoursPerWeek: 4,
-    };
-  }, [setting, profile]);
+  if (!setting) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 px-4">
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-8 text-center space-y-4 shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-slate-800">
+              Administrasi pembelajaran belum dibuat.
+            </h3>
+            <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
+              Buat atau pilih Workspace Administrasi terlebih dahulu sebelum mengisi Data Pembelajaran.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const initialPhase = getPhaseFromGrade(safeSetting.level || 'SD', safeSetting.grade || 'Kelas 1');
+  const initialPhase = getPhaseFromGrade(setting.level || 'SD', setting.grade || 'Kelas 1');
   const [formData, setFormData] = useState<AcademicSetting>({
-    ...safeSetting,
+    ...setting,
     phase: initialPhase,
   });
   const [workspaceName, setWorkspaceName] = useState<string>(workspace?.name || '');
@@ -87,37 +91,37 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
 
   // Sync state if prop changes (e.g. on workspace or profile switch)
   useEffect(() => {
-    const derivedPhase = getPhaseFromGrade(safeSetting.level || 'SD', safeSetting.grade || 'Kelas 1');
+    const derivedPhase = getPhaseFromGrade(setting.level || 'SD', setting.grade || 'Kelas 1');
     setFormData({
-      ...safeSetting,
+      ...setting,
       phase: derivedPhase,
     });
     setWorkspaceName(workspace?.name || '');
-    const currentSubjectList = SUBJECT_OPTIONS[safeSetting.level || 'SD'] || [];
-    if (safeSetting.subject && !currentSubjectList.includes(safeSetting.subject)) {
+    const currentSubjectList = SUBJECT_OPTIONS[setting.level || 'SD'] || [];
+    if (setting.subject && !currentSubjectList.includes(setting.subject)) {
       setIsCustomSubject(true);
     } else {
       setIsCustomSubject(false);
     }
-  }, [safeSetting, workspace]);
+  }, [setting, workspace]);
 
   // Dirty State Calculation: Check if form data or workspace name differs from saved setting
   const isDirty = useMemo(() => {
     const derivedPhase = getPhaseFromGrade(formData.level || 'SD', formData.grade || 'Kelas 1');
     const isSettingChanged =
-      formData.curriculum !== safeSetting.curriculum ||
-      formData.academicYear !== safeSetting.academicYear ||
-      formData.semester !== safeSetting.semester ||
-      formData.level !== safeSetting.level ||
-      formData.grade !== safeSetting.grade ||
-      formData.subject !== safeSetting.subject ||
-      (formData.totalHoursPerWeek || 4) !== (safeSetting.totalHoursPerWeek || 4) ||
+      formData.curriculum !== setting.curriculum ||
+      formData.academicYear !== setting.academicYear ||
+      formData.semester !== setting.semester ||
+      formData.level !== setting.level ||
+      formData.grade !== setting.grade ||
+      formData.subject !== setting.subject ||
+      formData.totalHoursPerWeek !== setting.totalHoursPerWeek ||
       formData.phase !== derivedPhase;
 
     const isNameChanged = workspace ? workspaceName.trim() !== workspace.name.trim() : false;
 
     return isSettingChanged || isNameChanged;
-  }, [formData, safeSetting, workspace, workspaceName]);
+  }, [formData, setting, workspace, workspaceName]);
 
   // Handle Level Change (automatically recalculates grade, derived phase, and default subject)
   const handleLevelChange = (level: 'SD' | 'SMP' | 'SMA' | 'SMK') => {
@@ -181,30 +185,38 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
     setWorkspaceName(workspace?.name || '');
   };
 
-  const handleSave = (e?: React.FormEvent) => {
+  const handleSave = (e?: React.FormEvent): boolean => {
     if (e) e.preventDefault();
-    if (!formData.subject.trim()) {
+    if (!formData.subject || !formData.subject.trim()) {
       alert('Mata pelajaran tidak boleh kosong.');
-      return;
+      return false;
     }
 
     const derivedPhase = getPhaseFromGrade(formData.level || 'SD', formData.grade || 'Kelas 1');
+    const resolvedCurriculumType = getCurriculumTypeFromSetting({
+      curriculum: formData.curriculum,
+      curriculumType: formData.curriculumType,
+    });
+
     const updated: AcademicSetting = {
       ...formData,
       phase: derivedPhase,
-      curriculumType: getCurriculumType(formData.curriculum),
+      curriculumType: resolvedCurriculumType,
       updatedAt: new Date().toISOString(),
     };
     onSaveSetting(updated, workspaceName.trim() || undefined);
     setSaveSuccessNotice(true);
     setShowUnsavedPrompt(false);
     setTimeout(() => setSaveSuccessNotice(false), 2500);
+    return true;
   };
 
   const handleSaveAndContinue = (e: React.FormEvent) => {
     e.preventDefault();
-    handleSave();
-    onNextStep();
+    const saved = handleSave();
+    if (saved) {
+      onNextStep();
+    }
   };
 
   const handleNextClick = () => {
@@ -310,7 +322,7 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
                   setFormData({
                     ...formData,
                     curriculum: newCur,
-                    curriculumType: getCurriculumType(newCur),
+                    curriculumType: getCurriculumTypeFromSetting({ curriculum: newCur }),
                     totalHoursPerWeek: formData.isHoursOverridden ? formData.totalHoursPerWeek : jp.weeklyJP,
                     regulationReference: jp.regulationReference,
                   });
@@ -662,8 +674,10 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  handleSave();
-                  onNextStep();
+                  const saved = handleSave();
+                  if (saved) {
+                    onNextStep();
+                  }
                 }}
                 className="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 shadow-sm transition cursor-pointer"
               >

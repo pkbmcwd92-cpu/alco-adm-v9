@@ -52,7 +52,7 @@ export function lookupOfficialWeeklyJP(
   });
 
   return {
-    weeklyJP: result.weeklyJP ?? 0,
+    weeklyJP: result.weeklyJP,
     annualJP: result.annualJP,
     isOfficial: result.isOfficial,
     regulationReference: result.isOfficial ? result.regulation : undefined,
@@ -63,15 +63,18 @@ export function lookupOfficialWeeklyJP(
 /**
  * Normalizes curriculum string or type to canonical CurriculumType
  */
-export function getCurriculumType(curriculum?: string, curriculumType?: CurriculumType): CurriculumType {
+export function getCurriculumType(curriculum?: string, curriculumType?: CurriculumType): CurriculumType | undefined {
   if (curriculumType === 'K13' || curriculumType === 'KURIKULUM_MERDEKA') {
     return curriculumType;
   }
   const curr = (curriculum || '').toLowerCase();
-  if (curr.includes('k13') || curr.includes('2013')) {
+  if (curr.includes('k13') || curr.includes('2013') || curr.includes('k-13') || curr.includes('k 13')) {
     return 'K13';
   }
-  return 'KURIKULUM_MERDEKA';
+  if (curr.includes('merdeka')) {
+    return 'KURIKULUM_MERDEKA';
+  }
+  return undefined;
 }
 
 

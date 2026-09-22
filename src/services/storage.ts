@@ -1131,6 +1131,11 @@ export function deleteProfile(profileId: string): void {
       current.activeProfileId = '';
       current.activeWorkspaceId = '';
     }
+  } else {
+    if (targetWsIds.has(current.activeWorkspaceId)) {
+      const remainingWs = current.workspaces.find((w) => w.profileId === current.activeProfileId);
+      current.activeWorkspaceId = remainingWs?.id || '';
+    }
   }
   saveAppStorage(current);
 }
@@ -1411,20 +1416,26 @@ export function saveCPAnalysis(analysis: CPAnalysisData): void {
   saveAppStorage(current);
 }
 
-export function saveAcademicSetting(setting: AcademicSetting, customWorkspaceName?: string): void {
+export function saveAcademicSetting(setting: AcademicSetting, customWorkspaceName?: string): boolean {
   const current = loadAppStorage();
   const derived = (setting.level && setting.grade) ? getPhaseFromGrade(setting.level, setting.grade) : '';
   const normalized = { ...setting, phase: derived, updatedAt: new Date().toISOString() };
 
   const idx = current.academicSettings.findIndex((a) => a.id === setting.id);
+  const ws = current.workspaces.find((w) => w.academicSettingId === setting.id);
+
   if (idx >= 0) {
     current.academicSettings[idx] = normalized;
   } else {
+    // Block orphan AcademicSetting: only allowed if an authoritative workspace links to this setting
+    if (!ws) {
+      console.warn(`[storage] Blocked attempt to persist orphan AcademicSetting ${setting.id} without authoritative workspace.`);
+      return false;
+    }
     current.academicSettings.push(normalized);
   }
 
   // Sync workspace name
-  const ws = current.workspaces.find((w) => w.academicSettingId === setting.id);
   if (ws) {
     ws.name = customWorkspaceName && customWorkspaceName.trim().length > 0
       ? customWorkspaceName.trim()
@@ -1433,6 +1444,7 @@ export function saveAcademicSetting(setting: AcademicSetting, customWorkspaceNam
   }
 
   saveAppStorage(current);
+  return true;
 }
 
 export function saveCP(cp: CPData): void {

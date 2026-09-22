@@ -65,6 +65,7 @@ import { BackupModal } from './components/BackupModal';
 import { isK13 } from './services/curriculumRouter';
 import { Plus, Copy, Trash2, X, FolderPlus } from 'lucide-react';
 import { GRADE_PHASE_MAP, SUBJECT_OPTIONS } from './data/curriculumDefaults';
+import { APP_BUILD_ID } from './config/buildInfo';
 
 const EMPTY_SCHOOL_VIEW: SchoolData = {
   id: '',
@@ -378,6 +379,9 @@ export function App() {
               activeSchool={activeSchool}
               schools={dataStore.schools}
               principalHistories={dataStore.principalHistories || []}
+              activeWorkspace={activeWorkspace}
+              workspaces={currentWorkspacesList || []}
+              onCreateWorkspaceClick={openNewWorkspaceModal}
               onSelectProfile={handleSelectProfile}
               onSaveProfile={handleSaveProfile}
               onDeleteProfile={handleDeleteProfile}
@@ -573,8 +577,11 @@ export function App() {
           <div>
             <strong>Administrasi Guru AI</strong> — MVP Fondasi Administrasi Berkesinambungan (Profil → CP → TP → ATP → Dokumen)
           </div>
-          <div className="text-[11px] text-slate-400">
-            Konteks Terpusat (ActiveContext) • Multi-Workspace Administrasi • Sumber CP Terverifikasi • Ekspor Word (.docx)
+          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+            <span>Konteks Terpusat (ActiveContext) • Multi-Workspace Administrasi • Sumber CP Terverifikasi • Ekspor Word (.docx)</span>
+            <span id="app-build-badge" className="font-mono text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-md font-semibold">
+              Build: {APP_BUILD_ID}
+            </span>
           </div>
         </div>
       </footer>

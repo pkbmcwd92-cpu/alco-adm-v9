@@ -18,8 +18,9 @@ import {
   Globe,
   History,
   AlertTriangle,
+  FolderPlus,
 } from 'lucide-react';
-import { TeacherProfile, SchoolData, PrincipalHistory } from '../types';
+import { TeacherProfile, SchoolData, PrincipalHistory, AdministrationWorkspace } from '../types';
 import { EDUCATION_LEVELS } from '../data/curriculumDefaults';
 import { SchoolIdentityProvider, SchoolSearchService, SchoolCandidate } from '../services/schoolProvider';
 
@@ -29,6 +30,9 @@ interface ProfileManagerProps {
   schools: SchoolData[];
   activeSchool?: SchoolData;
   principalHistories?: PrincipalHistory[];
+  activeWorkspace?: AdministrationWorkspace | null;
+  workspaces?: AdministrationWorkspace[];
+  onCreateWorkspaceClick?: () => void;
   onSelectProfile: (id: string) => void;
   onSaveProfile: (profile: TeacherProfile) => void;
   onDeleteProfile: (id: string) => void;
@@ -45,6 +49,9 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
   schools,
   activeSchool: propsActiveSchool,
   principalHistories = [],
+  activeWorkspace,
+  workspaces = [],
+  onCreateWorkspaceClick,
   onSelectProfile,
   onSaveProfile,
   onDeleteProfile,
@@ -74,6 +81,10 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
 
   // Profile Modal State
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileToDelete, setProfileToDelete] = useState<TeacherProfile | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleteNotice, setDeleteNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
   const [profileForm, setProfileForm] = useState<TeacherProfile>(() => {
     if (activeProfile) return { ...activeProfile };
     return {
@@ -127,6 +138,19 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
       setSchoolForm({ ...activeSchool });
     }
   }, [activeSchool?.id, isEditingSchool]);
+
+  useEffect(() => {
+    if (pendingDeleteId) {
+      if (!profiles.some((p) => p.id === pendingDeleteId)) {
+        setDeleteNotice({ type: 'success', message: 'Profil guru dan administrasi terkait berhasil dihapus.' });
+      } else {
+        setDeleteNotice({ type: 'error', message: 'Gagal menghapus profil guru.' });
+      }
+      setPendingDeleteId(null);
+      const timer = setTimeout(() => setDeleteNotice(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [profiles, pendingDeleteId]);
 
   // School Search / Candidate Lookup State
   const [searchQuery, setSearchQuery] = useState('');
@@ -426,6 +450,52 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
         </div>
       </div>
 
+      {deleteNotice && (
+        <div
+          id="profile-delete-notice"
+          className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between shadow-xs ${
+            deleteNotice.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-rose-50 text-rose-800 border-rose-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {deleteNotice.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span>{deleteNotice.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDeleteNotice(null)}
+            className="text-slate-400 hover:text-slate-600 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {workspaceNotice && (
+        <div
+          id="profile-workspace-notice"
+          className="p-3.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-xs font-semibold flex items-center justify-between shadow-xs"
+        >
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>{workspaceNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setWorkspaceNotice(null)}
+            className="text-slate-400 hover:text-slate-600 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Grid: Profiles List & Active Primary School Data */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left: Profiles List (7 cols) */}
@@ -530,11 +600,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
                         </button>
                         <button
                           id={`btn-delete-profile-${p.id}`}
-                          onClick={() => {
-                            if (confirm(`Apakah Anda yakin ingin menghapus profil "${p.name}"? Seluruh administrasi profil ini akan terhapus.`)) {
-                              onDeleteProfile(p.id);
-                            }
-                          }}
+                          onClick={() => setProfileToDelete(p)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                           title="Hapus Profil"
                         >
@@ -806,15 +872,41 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
           {/* Next step CTA */}
           <button
             id="btn-next-to-academic"
-            onClick={profiles.length > 0 ? onNextStep : handleOpenAddProfile}
+            onClick={() => {
+              if (profiles.length === 0) {
+                handleOpenAddProfile();
+                return;
+              }
+              if (!activeWorkspace) {
+                if (onCreateWorkspaceClick) {
+                  onCreateWorkspaceClick();
+                } else {
+                  setWorkspaceNotice('Buat Administrasi / Kelas terlebih dahulu sebelum mengisi Data Pembelajaran.');
+                }
+                return;
+              }
+              onNextStep();
+            }}
             className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-semibold shadow-xs transition cursor-pointer ${
-              profiles.length > 0
-                ? 'bg-blue-900 hover:bg-blue-950 text-white'
-                : 'bg-blue-700 hover:bg-blue-800 text-white'
+              profiles.length === 0
+                ? 'bg-blue-700 hover:bg-blue-800 text-white'
+                : !activeWorkspace
+                ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                : 'bg-blue-900 hover:bg-blue-950 text-white'
             }`}
           >
-            <span>{profiles.length > 0 ? 'Lanjut ke 02 Data Pembelajaran' : 'Tambah Profil Guru untuk Melanjutkan'}</span>
-            <ArrowRight className="w-4 h-4" />
+            <span>
+              {profiles.length === 0
+                ? 'Tambah Profil Guru untuk Melanjutkan'
+                : !activeWorkspace
+                ? 'Buat Administrasi / Kelas untuk Melanjutkan'
+                : 'Lanjut ke 02 Data Pembelajaran'}
+            </span>
+            {profiles.length === 0 || activeWorkspace ? (
+              <ArrowRight className="w-4 h-4" />
+            ) : (
+              <FolderPlus className="w-4 h-4" />
+            )}
           </button>
         </div>
       </div>
@@ -1534,6 +1626,49 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
                 className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 transition cursor-pointer shadow-xs"
               >
                 Gunakan Sekolah yang Sudah Ada
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Konfirmasi Hapus Profil */}
+      {profileToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-900">Hapus Profil Guru?</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Profil dan seluruh administrasi pembelajaran terkait profil ini akan dihapus.
+                  Data master sekolah tidak ikut dihapus.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                id="btn-cancel-delete-profile"
+                type="button"
+                onClick={() => setProfileToDelete(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                id="btn-confirm-delete-profile"
+                type="button"
+                onClick={() => {
+                  const id = profileToDelete.id;
+                  setPendingDeleteId(id);
+                  setProfileToDelete(null);
+                  onDeleteProfile(id);
+                }}
+                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition shadow-xs cursor-pointer"
+              >
+                Hapus Profil
               </button>
             </div>
           </div>

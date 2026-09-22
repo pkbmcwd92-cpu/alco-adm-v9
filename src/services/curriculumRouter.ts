@@ -24,7 +24,7 @@ export function getCurriculumTypeFromSetting(
     return undefined;
   }
   const curr = setting.curriculum.toLowerCase();
-  if (curr.includes('k13') || curr.includes('2013')) {
+  if (curr.includes('k13') || curr.includes('2013') || curr.includes('k-13')) {
     return 'K13';
   }
   if (curr.includes('merdeka')) {

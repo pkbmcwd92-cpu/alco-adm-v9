@@ -84,11 +84,33 @@ function normalizeText(text?: string): string {
  */
 export function getSubjectJP(query: SubjectJPQuery): SubjectJPResult {
   const normCurriculum = normalizeText(query.curriculum);
-  const resolvedCurriculumType: CurriculumType =
+  const resolvedCurriculumType: CurriculumType | undefined =
     query.curriculumType ||
-    (normCurriculum.includes('k13') || normCurriculum.includes('2013')
+    (normCurriculum.includes('k13') || normCurriculum.includes('2013') || normCurriculum.includes('k 13')
       ? 'K13'
-      : 'KURIKULUM_MERDEKA');
+      : normCurriculum.includes('merdeka')
+      ? 'KURIKULUM_MERDEKA'
+      : undefined);
+
+  if (!resolvedCurriculumType) {
+    return {
+      weeklyJP: undefined,
+      intrakurikulerWeeklyJP: undefined,
+      intrakurikulerAnnualJP: undefined,
+      kokurikulerAnnualJP: undefined,
+      totalAnnualJP: undefined,
+      annualJP: undefined,
+      kokurikulerJP: undefined,
+      isOfficial: false,
+      verificationStatus: 'UNVERIFIED',
+      statusLabel: 'Kurikulum belum ditentukan',
+      sourceType: 'OFFICIAL',
+      regulation: undefined,
+      regulationYear: undefined,
+      source: undefined,
+      explanation: 'Alokasi JP tidak dapat ditentukan secara otomatis karena kurikulum belum ditentukan atau tidak dikenali.',
+    };
+  }
 
   // Parse nomor kelas jika tersedia (e.g. "Kelas 4" -> 4, "4" -> 4)
   const gradeNum = parseInt((query.grade || '').replace(/[^0-9]/g, ''), 10);
@@ -1088,15 +1110,18 @@ export function calculateAnnualJP(jpPerWeek: number, annualEffectiveWeeks: numbe
 /**
  * Normalizes curriculum string or type to canonical CurriculumType
  */
-export function getCurriculumType(curriculum?: string, curriculumType?: CurriculumType): CurriculumType {
+export function getCurriculumType(curriculum?: string, curriculumType?: CurriculumType): CurriculumType | undefined {
   if (curriculumType === 'K13' || curriculumType === 'KURIKULUM_MERDEKA') {
     return curriculumType;
   }
   const curr = (curriculum || '').toLowerCase();
-  if (curr.includes('k13') || curr.includes('2013')) {
+  if (curr.includes('k13') || curr.includes('2013') || curr.includes('k-13') || curr.includes('k 13')) {
     return 'K13';
   }
-  return 'KURIKULUM_MERDEKA';
+  if (curr.includes('merdeka')) {
+    return 'KURIKULUM_MERDEKA';
+  }
+  return undefined;
 }
 
 /** @deprecated Compatibility wrapper */

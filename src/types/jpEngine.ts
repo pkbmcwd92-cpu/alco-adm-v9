@@ -81,10 +81,10 @@ export interface SubjectJPResult {
   sourceType: JPSourceType;
   regulation?: string;
   regulationYear?: number;
-  source: string;
+  source?: string;
   sourceUrl?: string;
   effectiveFrom?: string;
-  curriculumType: CurriculumType;
+  curriculumType?: CurriculumType;
   matchedRule?: CurriculumStructureRule;
   explanation: string;
 
