@@ -692,6 +692,7 @@ const contextWithChangedProfile = buildAdministrationContext({
     defaultSubject: 'Ilmu Pengetahuan Alam dan Sosial (IPAS)',
   },
   school: mockSchool,
+  workspace: mockWorkspace,
   academicSetting: {
     ...mockAcademic,
     subject: 'Matematika', // Authoritative
