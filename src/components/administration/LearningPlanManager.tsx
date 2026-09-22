@@ -19,6 +19,7 @@ import {
   Info,
   Clock,
   ExternalLink,
+  Clipboard,
 } from 'lucide-react';
 import {
   LearningPlan,
@@ -52,6 +53,10 @@ import { getCurriculumTypeFromSetting } from '../../services/curriculumRouter';
 import { generateModulAjar } from '../../services/documentEngine/generators/modulAjarGenerator';
 import { generatePdfDocument } from '../../services/documentEngine/renderers/pdf/pdfDocGenerators';
 import { DocumentGenerationContext } from '../../services/documentEngine/types';
+import {
+  buildTPDiagnosticReport,
+  recordDiagnosticEvent,
+} from '../../services/diagnosticService';
 import saveAs from 'file-saver';
 import { TPItem, ATPItem } from '../../types';
 
@@ -191,6 +196,62 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
     }, 4000);
   };
 
+  const recordLearningPlanBlocked = (reasonCode: string) => {
+    recordDiagnosticEvent({
+      scope: 'LEARNING_PLAN',
+      action: 'LEARNING_PLAN_AI_BLOCKED',
+      status: 'BLOCKED',
+      metadata: {
+        reasonCode,
+        tpItemsCount: tp?.items?.length || 0,
+        tpWorkflowStatus: tp?.workflowStatus,
+        tpNeedsReview: tp?.needsReview || false,
+        atpItemsCount: atp?.items?.length || 0,
+        atpWorkflowStatus: atp?.workflowStatus,
+        atpNeedsReview: atp?.needsReview || false,
+      },
+    });
+  };
+
+  const handleCopyDiagnostic = async () => {
+    const gateReason = !tp || tp.workflowStatus !== 'SIAP'
+      ? 'TP_STATUS_NOT_READY'
+      : tp.needsReview
+      ? 'TP_NEEDS_REVIEW'
+      : atp?.needsReview
+      ? 'ATP_NEEDS_REVIEW'
+      : atp?.items?.length && !isAtpReadyForAIScope(atp)
+      ? 'ATP_STATUS_NOT_READY'
+      : 'ALLOWED';
+    const report = buildTPDiagnosticReport({
+      module: 'LEARNING_PLAN',
+      workspaceId: workspace?.id,
+      academicSetting,
+      tp,
+      uiItemsCount: tp?.items?.length || 0,
+      atp,
+      learningPlanGate: gateReason === 'ALLOWED' ? 'ALLOWED' : 'BLOCKED',
+      learningPlanGateReason: gateReason,
+    });
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(report);
+      } else {
+        const area = document.createElement('textarea');
+        area.value = report;
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand('copy');
+        document.body.removeChild(area);
+      }
+      showNotification('success', 'Diagnostik berhasil disalin.');
+    } catch {
+      showNotification('error', 'Gagal menyalin diagnostik. Browser tidak memberi akses clipboard.');
+    }
+  };
+
   // Create new manual empty plan
   const handleCreateNewManual = () => {
     if (curriculumType === 'K13') {
@@ -221,32 +282,39 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
   // Trigger AI Assisted Draft with strict canonical scope (0 / 1 / >1 rule)
   const handleCreateAIDraftClick = () => {
     if (curriculumType === 'K13') {
+      recordLearningPlanBlocked('CURRICULUM_UNRESOLVED');
       showNotification('error', 'Penyusunan RPP K13 pada modul Perencanaan Pembelajaran ini belum didukung. Gunakan administrasi K13 yang tersedia sampai workflow K13 khusus disiapkan.');
       return;
     }
     if (curriculumType !== 'KURIKULUM_MERDEKA') {
+      recordLearningPlanBlocked('CURRICULUM_UNRESOLVED');
       showNotification('error', 'Kurikulum belum terselesaikan. Draf AI tidak dibuat agar tidak diarahkan diam-diam ke Kurikulum Merdeka.');
       return;
     }
-    if (tp?.workflowStatus && tp.workflowStatus !== 'SIAP' && tp.workflowStatus !== 'READY' && tp.workflowStatus !== 'COMPLETE') {
-      showNotification('error', `TP belum siap untuk AI (${tp.workflowStatus}). Tinjau TP terlebih dahulu.`);
+    if (!tp || tp.workflowStatus !== 'SIAP') {
+      recordLearningPlanBlocked('TP_STATUS_NOT_READY');
+      showNotification('error', `TP belum siap untuk AI (${tp?.workflowStatus || 'BELUM_DIMULAI'}). Tinjau TP terlebih dahulu.`);
       return;
     }
     if (tp?.needsReview) {
+      recordLearningPlanBlocked('TP_NEEDS_REVIEW');
       showNotification('error', `TP perlu ditinjau sebelum AI draft: ${tp.reviewReason || 'status needsReview aktif'}.`);
       return;
     }
     if (atp?.needsReview) {
+      recordLearningPlanBlocked('ATP_NEEDS_REVIEW');
       showNotification('error', `ATP perlu ditinjau sebelum AI draft: ${atp.reviewReason || 'status needsReview aktif'}.`);
       return;
     }
     if (atp?.items?.length && !isAtpReadyForAIScope(atp)) {
+      recordLearningPlanBlocked('ATP_STATUS_NOT_READY');
       showNotification('error', 'ATP belum siap untuk digunakan sebagai sumber Draf AI. Tinjau dan selesaikan ATP terlebih dahulu.');
       return;
     }
     const scopes = resolveAvailableScopes(tp, atp);
 
     if (scopes.length === 0) {
+      recordLearningPlanBlocked('NO_VALID_SCOPE');
       showNotification(
         'error',
         'Tidak ada Scope/Unit Pembelajaran yang valid. Silakan buat TP atau ATP terlebih dahulu di menu Tujuan Pembelajaran / ATP.'
@@ -467,6 +535,14 @@ export const LearningPlanManager: React.FC<LearningPlanManagerProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCopyDiagnostic}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-300 transition-colors"
+            >
+              <Clipboard className="w-4 h-4" />
+              Salin Diagnostik
+            </button>
             <button
               onClick={handleCreateNewManual}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"

@@ -162,6 +162,17 @@ export interface TPValidationDetails {
   issues: string[];
 }
 
+export type PhaseCode = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+
+export function normalizePhaseCode(value?: string | null): PhaseCode | '' {
+  const normalized = (value || '').trim().toUpperCase().replace(/^FASE\s+/, '');
+  return ['A', 'B', 'C', 'D', 'E', 'F'].includes(normalized) ? (normalized as PhaseCode) : '';
+}
+
+function formatPhase(code: string): string {
+  return code ? `Fase ${code}` : 'Fase belum ditentukan';
+}
+
 /**
  * Validasi mendalam untuk status workflow TPData (Tujuan Pembelajaran)
  */
@@ -241,8 +252,10 @@ export function validateTPDataWorkflow(
     if (context.academicYear && tp.academicYear && tp.academicYear !== context.academicYear) {
       issues.push(`Tahun ajaran TP (${tp.academicYear}) tidak sesuai dengan konteks (${context.academicYear}).`);
     }
-    if (context.phase && tp.phase && tp.phase !== context.phase) {
-      issues.push(`Fase TP (${tp.phase}) tidak sesuai dengan konteks (${context.phase}).`);
+    const tpPhaseCode = normalizePhaseCode(tp.phase);
+    const contextPhaseCode = normalizePhaseCode(context.phase);
+    if (context.phase && tp.phase && tpPhaseCode !== contextPhaseCode) {
+      issues.push(`Fase TP (${formatPhase(tpPhaseCode)}) tidak sesuai dengan konteks (${formatPhase(contextPhaseCode)}).`);
     }
 
     const level =
@@ -258,12 +271,13 @@ export function validateTPDataWorkflow(
         : undefined);
 
     if (level && context.phase) {
-      if (level === 'SD' && !['A', 'B', 'C'].includes(context.phase)) {
-        issues.push(`Fase ${context.phase} tidak sesuai untuk jenjang SD (harus A, B, atau C).`);
-      } else if (level === 'SMP' && context.phase !== 'D') {
-        issues.push(`Fase ${context.phase} tidak sesuai untuk jenjang SMP (harus Fase D).`);
-      } else if (level === 'SMA' && !['E', 'F'].includes(context.phase)) {
-        issues.push(`Fase ${context.phase} tidak sesuai untuk jenjang SMA (harus E atau F).`);
+      const phaseCode = normalizePhaseCode(context.phase);
+      if (level === 'SD' && !['A', 'B', 'C'].includes(phaseCode)) {
+        issues.push(`${formatPhase(phaseCode)} tidak sesuai untuk jenjang SD (harus Fase A, B, atau C).`);
+      } else if (level === 'SMP' && phaseCode !== 'D') {
+        issues.push(`${formatPhase(phaseCode)} tidak sesuai untuk jenjang SMP (harus Fase D).`);
+      } else if (level === 'SMA' && !['E', 'F'].includes(phaseCode)) {
+        issues.push(`${formatPhase(phaseCode)} tidak sesuai untuk jenjang SMA (harus Fase E atau F).`);
       }
     }
   }

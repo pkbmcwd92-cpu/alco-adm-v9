@@ -21,6 +21,7 @@ import {
   Layers,
   CheckCircle2,
   Info,
+  Clipboard,
 } from 'lucide-react';
 import {
   TPData,
@@ -35,6 +36,10 @@ import {
 import { P3_DIMENSIONS } from '../data/curriculumDefaults';
 import { generateTPWithAI, refineTextWithAI } from '../services/aiService';
 import { validateTPDataWorkflow } from '../services/cpWorkflowService';
+import {
+  buildTPDiagnosticReport,
+  recordDiagnosticEvent,
+} from '../services/diagnosticService';
 
 interface TPManagerProps {
   tp: TPData;
@@ -62,7 +67,8 @@ export const TPManager: React.FC<TPManagerProps> = ({
   const [items, setItems] = useState<TPItem[]>(tp.items || []);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
-  const [saveNotice, setSaveNotice] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
 
   // Edit/Add modal state
   const [isEditing, setIsEditing] = useState(false);
@@ -71,6 +77,7 @@ export const TPManager: React.FC<TPManagerProps> = ({
 
   useEffect(() => {
     setItems(tp.items || []);
+    setIsDirty(false);
   }, [tp]);
 
   const hasCP =
@@ -96,6 +103,12 @@ export const TPManager: React.FC<TPManagerProps> = ({
     cpAnalysis,
     academicSetting
   );
+  const isStoredStatusAligned = (tp.workflowStatus || 'BELUM_DIMULAI') === validation.status;
+  const saveState: 'DIRTY' | 'SAVED_READY' | 'SAVED_INCOMPLETE' = isDirty || !isStoredStatusAligned
+    ? 'DIRTY'
+    : validation.isSiap
+    ? 'SAVED_READY'
+    : 'SAVED_INCOMPLETE';
 
   // Integrity checks for stale upstream
   const isCPOutdated =
@@ -115,8 +128,18 @@ export const TPManager: React.FC<TPManagerProps> = ({
   const needsReview = tp.needsReview || isCPOutdated || isAnalysisOutdated || isCpUnusable;
 
   // Handle Confirm Alignment
-  const handleConfirmAlignment = () => {
+  const showSaveNotice = (message: string) => {
+    setSaveNotice(message);
+  };
+
+  const persistTP = (source: 'AI_AUTO' | 'MANUAL' | 'STATUS_SYNC' | 'CONFIRM_ALIGNMENT') => {
     const updatedItems = items.map((item, idx) => ({ ...item, order: idx + 1 }));
+    const nextGeneratedBy =
+      source === 'AI_AUTO'
+        ? 'AI'
+        : tp.generatedBy === 'AI'
+        ? 'AI_EDITED_BY_TEACHER'
+        : tp.generatedBy || 'TEACHER';
     const candidateTP: TPData = {
       ...tp,
       academicSettingId: academicSetting.id,
@@ -128,7 +151,8 @@ export const TPManager: React.FC<TPManagerProps> = ({
       subjectCode: context.subject,
       phase: context.phase,
       items: updatedItems,
-      needsReview: false,
+      generatedBy: nextGeneratedBy,
+      needsReview: source === 'CONFIRM_ALIGNMENT' || source === 'MANUAL' || source === 'STATUS_SYNC' ? false : tp.needsReview,
       reviewReason: undefined,
       basedOnCpUpdatedAt: cp.updatedAt || new Date().toISOString(),
       basedOnAnalysisUpdatedAt: cpAnalysis?.updatedAt || new Date().toISOString(),
@@ -140,8 +164,25 @@ export const TPManager: React.FC<TPManagerProps> = ({
       workflowStatus: val.status,
     };
     onSaveTP(updatedTP);
-    setSaveNotice(true);
-    setTimeout(() => setSaveNotice(false), 2500);
+    setIsDirty(false);
+    recordDiagnosticEvent({
+      scope: 'TP',
+      action: 'TP_SAVE',
+      status: val.status,
+      metadata: {
+        source,
+        itemsCount: updatedItems.length,
+        validationStatus: val.status,
+        needsReview: updatedTP.needsReview || false,
+      },
+    });
+    showSaveNotice(val.isSiap ? 'TP tersimpan dan SIAP.' : 'TP tersimpan, tetapi masih perlu diperbaiki.');
+    return { updatedTP, validation: val };
+  };
+
+  // Handle Confirm Alignment
+  const handleConfirmAlignment = () => {
+    persistTP('CONFIRM_ALIGNMENT');
   };
 
   // Handle AI Generate TP from CP & CP Analysis
@@ -167,6 +208,12 @@ export const TPManager: React.FC<TPManagerProps> = ({
 
     setIsGenerating(true);
     setGenerationError(null);
+    recordDiagnosticEvent({
+      scope: 'TP',
+      action: 'TP_GENERATE_STARTED',
+      status: 'STARTED',
+      metadata: { itemsCount: items.length },
+    });
 
     try {
       const generated = await generateTPWithAI({
@@ -206,56 +253,79 @@ export const TPManager: React.FC<TPManagerProps> = ({
         workflowStatus: val.status,
       };
       onSaveTP(updatedTP);
+      setIsDirty(false);
+      recordDiagnosticEvent({
+        scope: 'TP',
+        action: 'TP_GENERATE_SUCCESS',
+        status: val.status,
+        metadata: {
+          itemsCount: generated.length,
+          validationStatus: val.status,
+          validationIssueCount: val.issues.length,
+        },
+      });
+      recordDiagnosticEvent({
+        scope: 'TP',
+        action: 'TP_SAVE',
+        status: val.status,
+        metadata: {
+          source: 'AI_AUTO',
+          itemsCount: generated.length,
+          validationStatus: val.status,
+          needsReview: false,
+        },
+      });
+      showSaveNotice(val.isSiap ? 'AI membuat dan menyimpan TP. Status: SIAP.' : 'AI membuat dan menyimpan TP, tetapi masih perlu diperbaiki.');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal menghasilkan TP dengan AI';
       setGenerationError(msg);
+      recordDiagnosticEvent({
+        scope: 'TP',
+        action: 'TP_GENERATE_FAILED',
+        status: 'FAILED',
+        metadata: { reason: msg },
+      });
     } finally {
       setIsGenerating(false);
     }
   };
 
   const handleSave = () => {
-    const updatedItems = items.map((item, idx) => ({ ...item, order: idx + 1 }));
-    const nextGeneratedBy =
-      tp.generatedBy === 'AI' ? 'AI_EDITED_BY_TEACHER' : tp.generatedBy || 'TEACHER';
-
-    const testTP: TPData = {
-      ...tp,
-      academicSettingId: academicSetting.id,
-      cpId: cp.id,
-      cpVersion: cp.cpVersion ?? cp.source?.versionCode,
-      cpRegulationIds: cp.source?.regulationIds || cp.regulationIds || [],
-      cpAnalysisId: cpAnalysis?.id,
-      academicYear: context.academicYear,
-      subjectCode: context.subject,
-      phase: context.phase,
-      items: updatedItems,
-      generatedBy: nextGeneratedBy,
-      basedOnCpUpdatedAt: cp.updatedAt || new Date().toISOString(),
-      basedOnAnalysisUpdatedAt: cpAnalysis?.updatedAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    const val = validateTPDataWorkflow(testTP, cp, cpAnalysis, academicSetting);
-
-    const updatedTP: TPData = {
-      ...testTP,
-      workflowStatus: val.status,
-      needsReview: false,
-      reviewReason: undefined,
-    };
-
-    onSaveTP(updatedTP);
-    setSaveNotice(true);
-    setTimeout(() => setSaveNotice(false), 2500);
+    persistTP(isStoredStatusAligned ? 'MANUAL' : 'STATUS_SYNC');
   };
 
-  const handleSaveAndNext = () => {
+  const handleContinue = () => {
     if (items.length === 0) {
       alert('Tambahkan minimal 1 Tujuan Pembelajaran (TP) sebelum menyusun ATP.');
+      recordDiagnosticEvent({
+        scope: 'TP',
+        action: 'TP_CONTINUE_BLOCKED',
+        status: validation.status,
+        metadata: { reason: 'NO_TP_ITEMS', validationStatus: validation.status, issueCount: validation.issues.length },
+      });
       return;
     }
-    handleSave();
+    if (saveState !== 'SAVED_READY') {
+      const reason = isDirty
+        ? 'Perubahan TP belum disimpan.'
+        : !isStoredStatusAligned
+        ? 'Status TP tersimpan belum sinkron dengan validasi runtime.'
+        : validation.issues[0] || 'TP belum SIAP.';
+      setGenerationError(reason);
+      recordDiagnosticEvent({
+        scope: 'TP',
+        action: 'TP_CONTINUE_BLOCKED',
+        status: validation.status,
+        metadata: { reason, validationStatus: validation.status, issueCount: validation.issues.length },
+      });
+      return;
+    }
+    recordDiagnosticEvent({
+      scope: 'TP',
+      action: 'TP_CONTINUE_ALLOWED',
+      status: validation.status,
+      metadata: { itemsCount: items.length },
+    });
     onNextStep();
   };
 
@@ -271,6 +341,7 @@ export const TPManager: React.FC<TPManagerProps> = ({
 
     const reordered = newItems.map((it, idx) => ({ ...it, order: idx + 1 }));
     setItems(reordered);
+    setIsDirty(true);
   };
 
   const handleDelete = (id: string) => {
@@ -278,6 +349,7 @@ export const TPManager: React.FC<TPManagerProps> = ({
       const filtered = items.filter((i) => i.id !== id);
       const reordered = filtered.map((it, idx) => ({ ...it, order: idx + 1 }));
       setItems(reordered);
+      setIsDirty(true);
     }
   };
 
@@ -327,6 +399,7 @@ export const TPManager: React.FC<TPManagerProps> = ({
 
     const reordered = newItems.map((it, idx) => ({ ...it, order: idx + 1 }));
     setItems(reordered);
+    setIsDirty(true);
     setIsEditing(false);
     setCurrentItem(null);
   };
@@ -359,6 +432,37 @@ export const TPManager: React.FC<TPManagerProps> = ({
       alert('Gagal menyempurnakan teks dengan AI.');
     } finally {
       setIsRefining(false);
+    }
+  };
+
+  const handleCopyDiagnostic = async () => {
+    const report = buildTPDiagnosticReport({
+      module: 'TP',
+      workspaceId: tp.workspaceId,
+      academicSetting,
+      context,
+      tp,
+      uiItemsCount: items.length,
+      validation,
+      learningPlanGate: validation.isSiap ? 'ALLOWED' : 'BLOCKED',
+      learningPlanGateReason: validation.isSiap ? undefined : validation.issues[0],
+    });
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(report);
+      } else {
+        const area = document.createElement('textarea');
+        area.value = report;
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand('copy');
+        document.body.removeChild(area);
+      }
+      showSaveNotice('Diagnostik berhasil disalin.');
+    } catch {
+      setGenerationError('Gagal menyalin diagnostik. Browser tidak memberi akses clipboard.');
     }
   };
 
@@ -451,6 +555,14 @@ export const TPManager: React.FC<TPManagerProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleCopyDiagnostic}
+              className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold border border-slate-300 shadow-sm transition cursor-pointer"
+            >
+              <Clipboard className="w-4 h-4" />
+              <span>Salin Diagnostik</span>
+            </button>
             <button
               id="btn-ai-generate-tp"
               onClick={handleGenerateAI}
@@ -661,30 +773,48 @@ export const TPManager: React.FC<TPManagerProps> = ({
       {/* Action Footer */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
         <div className="flex items-center gap-2">
+          <span
+            className={`text-xs font-bold px-3 py-1.5 rounded-lg border ${
+              saveState === 'SAVED_READY'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : saveState === 'SAVED_INCOMPLETE'
+                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                : 'bg-blue-50 text-blue-800 border-blue-200'
+            }`}
+          >
+            {saveState === 'SAVED_READY'
+              ? 'Tersimpan • SIAP'
+              : saveState === 'SAVED_INCOMPLETE'
+              ? 'Tersimpan • Perlu diperbaiki'
+              : 'Perubahan belum disimpan'}
+          </span>
           <button
             id="btn-save-tp-draft"
             type="button"
             onClick={handleSave}
+            disabled={saveState === 'SAVED_READY'}
             className="px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 shadow-xs transition"
           >
-            Simpan Daftar TP
+            Simpan TP
           </button>
           {saveNotice && (
             <span className="text-xs font-semibold text-emerald-700 flex items-center gap-1">
-              <Check className="w-4 h-4 text-emerald-600" /> Data TP tersimpan
+              <Check className="w-4 h-4 text-emerald-600" /> {saveNotice}
             </span>
           )}
         </div>
 
-        <button
-          id="btn-next-to-atp"
-          type="button"
-          onClick={handleSaveAndNext}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-900 hover:bg-blue-950 text-white py-2.5 px-6 rounded-xl text-sm font-semibold shadow-sm transition cursor-pointer"
-        >
-          <span>Simpan & Lanjut ke 06 Penyusunan ATP (Alur Tujuan Pembelajaran)</span>
-          <ArrowRight className="w-4 h-4" />
-        </button>
+        {saveState === 'SAVED_READY' && (
+          <button
+            id="btn-next-to-atp"
+            type="button"
+            onClick={handleContinue}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-900 hover:bg-blue-950 text-white py-2.5 px-6 rounded-xl text-sm font-semibold shadow-sm transition cursor-pointer"
+          >
+            <span>Lanjut ke ATP</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* MODAL: Add / Edit TP */}
