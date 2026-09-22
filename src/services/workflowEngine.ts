@@ -20,8 +20,8 @@ import {
   K13KKM,
   ProfileWorkspaceData,
 } from '../types';
-import { isK13, isMerdeka, getCurriculumTypeFromSetting, validateAcademicSettingReadiness } from './curriculumRouter';
-import { findSubjectByNameOrAlias, findSubjectByCode } from '../data/curriculum/subjects';
+import { getCurriculumTypeFromSetting } from './curriculumRouter';
+import { validateAcademicSettingReadiness } from './academicSettingReadiness';
 import { resolveCurriculumContext, resolveSubjectInput } from '../data/curriculum/resolver';
 import { ResolvedCurriculumContext } from '../data/curriculum/types';
 import { getPhaseFromGrade } from '../data/curriculumDefaults';
@@ -71,16 +71,18 @@ export function buildAdministrationContext(data: {
 }): AdministrationContext {
   const { workspace, profile, school, academicSetting } = data;
 
-  const curriculumType: CurriculumType | undefined = getCurriculumTypeFromSetting(academicSetting);
+  const academicReadiness = validateAcademicSettingReadiness(academicSetting);
+  const curriculumType: CurriculumType | undefined =
+    academicReadiness.curriculumType || getCurriculumTypeFromSetting(academicSetting);
 
   // Extract raw inputs without injecting false default values
-  const schoolId = school?.id || profile?.schoolId || '';
+  const schoolId = school?.id || '';
   const teacherProfileId = profile?.id || '';
-  const workspaceId = workspace?.id || (academicSetting?.id ? `ws-${academicSetting.id}` : '');
+  const workspaceId = workspace?.id || '';
   const academicYear = academicSetting?.academicYear?.trim() || '';
-  const semester: 1 | 2 | undefined = academicSetting?.semester?.startsWith('1')
+  const semester: 1 | 2 | undefined = academicSetting?.semester === '1 (Ganjil)'
     ? 1
-    : academicSetting?.semester?.startsWith('2')
+    : academicSetting?.semester === '2 (Genap)'
     ? 2
     : undefined;
 
@@ -92,15 +94,8 @@ export function buildAdministrationContext(data: {
   const gradeMatch = rawGrade.match(/\d+/);
   const gradeNum = gradeMatch ? parseInt(gradeMatch[0], 10) : 0;
 
-  // Check validity of mandatory fields
-  const isCurriculumMissing = !curriculumType;
   const isSchoolMissing = !schoolId;
-  const isAcademicYearMissing = !academicYear;
-  const isSemesterMissing = semester === undefined;
-  const isSubjectMissing = !rawSubject;
-  const isGradeMissing = !rawGrade || gradeNum < 1 || gradeNum > 12;
-  const isLevelMissing = !rawLevel;
-  const isSMKUnsupported = rawLevel === 'SMK';
+  const isWorkspaceMissing = !workspaceId;
 
   let curriculumResolutionStatus: 'RESOLVED' | 'UNRESOLVED' | 'AMBIGUOUS' = 'UNRESOLVED';
   let resolvedContext: ResolvedCurriculumContext | null = null;
@@ -109,22 +104,12 @@ export function buildAdministrationContext(data: {
   let subjectName = rawSubject;
   let phase: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | undefined = undefined;
 
-  if (isCurriculumMissing) {
-    unresolvedReason = 'Kurikulum belum ditentukan atau tidak dikenali.';
+  if (!academicReadiness.valid) {
+    unresolvedReason = academicReadiness.errors[0] || 'Data Pembelajaran belum lengkap.';
+  } else if (isWorkspaceMissing) {
+    unresolvedReason = 'Workspace administrasi belum dipilih atau belum lengkap.';
   } else if (isSchoolMissing) {
     unresolvedReason = 'Data satuan pendidikan (sekolah) belum dipilih atau belum lengkap.';
-  } else if (isAcademicYearMissing) {
-    unresolvedReason = 'Tahun ajaran belum diisi.';
-  } else if (isSemesterMissing) {
-    unresolvedReason = 'Semester belum dipilih.';
-  } else if (isLevelMissing) {
-    unresolvedReason = 'Jenjang pendidikan (SD/SMP/SMA) belum dipilih.';
-  } else if (isSMKUnsupported) {
-    unresolvedReason = 'Jenjang SMK saat ini belum didukung dalam resolusi kurikulum standar.';
-  } else if (isGradeMissing) {
-    unresolvedReason = `Tingkat/kelas '${rawGrade}' tidak valid atau di luar rentang (1-12).`;
-  } else if (isSubjectMissing) {
-    unresolvedReason = 'Mata pelajaran belum diisi.';
   } else {
     // Resolve via Canonical Curriculum Resolver PATCH A
     const resolution = resolveCurriculumContext({
@@ -306,7 +291,9 @@ export function validateWorkflowDependencies(
     hasOrphans: false,
   };
 
-  if (!isAcademicComplete) {
+  const canEnterCurriculumWorkflow = isProfileComplete && isAcademicComplete;
+
+  if (!canEnterCurriculumWorkflow) {
     // RECOVERY U1.3: ACADEMIC INCOMPLETE = ALL DOWNSTREAM BLOCKED
     // All downstream steps stay in their initial BLOCKED state:
     // status: 'BLOCKED', isBlocked: true, isComplete: false.

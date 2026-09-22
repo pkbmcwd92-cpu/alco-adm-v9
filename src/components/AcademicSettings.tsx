@@ -34,8 +34,8 @@ import {
   isK13,
   isMerdeka,
   getCurriculumTypeFromSetting,
-  validateAcademicSettingReadiness,
 } from '../services/curriculumRouter';
+import { validateAcademicSettingReadiness } from '../services/academicSettingReadiness';
 import { TeacherTeachingLoadModal } from './TeacherTeachingLoadModal';
 
 interface AcademicSettingsProps {

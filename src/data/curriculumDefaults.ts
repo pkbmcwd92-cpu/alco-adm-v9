@@ -94,7 +94,7 @@ export function buildActiveContext(
   school: SchoolData,
   setting: AcademicSetting
 ): ActiveContext {
-  const derivedPhase = setting.phase || getPhaseFromGrade(setting.level || profile?.defaultLevel || '', setting.grade || '');
+  const derivedPhase = setting.level && setting.grade ? getPhaseFromGrade(setting.level, setting.grade) : '';
   const curType = getCurriculumTypeFromSetting(setting);
   return {
     profileId: profile?.id || '',
@@ -103,10 +103,10 @@ export function buildActiveContext(
     curriculumType: curType,
     academicYear: setting.academicYear || '',
     semester: setting.semester || '',
-    level: setting.level || profile?.defaultLevel || '',
+    level: setting.level || '',
     grade: setting.grade || '',
     phase: derivedPhase || '',
-    subject: setting.subject || profile?.defaultSubject || '',
+    subject: setting.subject || '',
     subjectWeeklyJP: setting.subjectWeeklyJP,
     totalHoursPerWeek: setting.totalHoursPerWeek,
   };
