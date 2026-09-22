@@ -112,8 +112,9 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
   const [aliasNotification, setAliasNotification] = useState<string | null>(null);
 
   // Available Objectives (Merdeka TPs or K13 KDs)
+  const isMerdekaTpReady = !isMerdeka(academicSetting) || (tp?.workflowStatus === 'SIAP' && tp.needsReview !== true);
   const availableObjectives = React.useMemo(() => {
-    if (tp?.items && tp.items.length > 0) {
+    if (isMerdeka(academicSetting) && isMerdekaTpReady && tp?.items && tp.items.length > 0) {
       return tp.items.map((item) => ({
         id: item.id,
         code: item.code,
@@ -132,7 +133,7 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
       }));
     }
     return [];
-  }, [tp, k13Analysis]);
+  }, [academicSetting, isMerdekaTpReady, tp, k13Analysis]);
 
   // Handle Open Create New
   const handleOpenNew = (presetAlias?: string) => {
@@ -211,6 +212,7 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
   // without requiring the teacher to click any button. Idempotent and non-destructive.
   React.useEffect(() => {
     if (!academicSetting) return;
+    if (isMerdeka(academicSetting) && !isMerdekaTpReady) return;
 
     // 1. Gather all canonical objective IDs
     const canonicalIds: string[] = [];
@@ -260,6 +262,7 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
     }
   }, [
     academicSetting,
+    isMerdekaTpReady,
     tp,
     k13Analysis,
     assessmentCriteria,
@@ -271,6 +274,11 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
 
   // Batch Auto-Draft from Canonical Context (Manual Sync / Recovery Action)
   const handleBatchAutoDraft = () => {
+    if (isMerdeka(academicSetting) && !isMerdekaTpReady) {
+      alert('TP kanonikal belum SIAP atau masih perlu review. Rencana Asesmen baru dapat dibuat setelah TP dikonfirmasi siap.');
+      return;
+    }
+
     const newDrafts = generateAutoDraftPlansFromCanonicalContext({
       academicSetting,
       workspaceId: workspace?.id,

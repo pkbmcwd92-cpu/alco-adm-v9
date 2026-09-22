@@ -173,6 +173,115 @@ function formatPhase(code: string): string {
   return code ? `Fase ${code}` : 'Fase belum ditentukan';
 }
 
+export type SemanticChangeType = 'NONE' | 'NON_SUBSTANTIVE' | 'SUBSTANTIVE';
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+function normalizeText(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => normalizeText(item)).filter(Boolean).sort() : [];
+}
+
+function pedagogicalTPFingerprint(tp?: TPData | null): string {
+  if (!tp) return '';
+  return stableStringify({
+    academicSettingId: tp.academicSettingId,
+    cpId: tp.cpId,
+    cpAnalysisId: tp.cpAnalysisId,
+    academicYear: tp.academicYear,
+    subjectCode: tp.subjectCode,
+    phase: normalizePhaseCode(tp.phase) || normalizeText(tp.phase),
+    items: (tp.items || []).map((item) => ({
+      id: item.id,
+      code: normalizeText(item.code),
+      statement: normalizeText(item.statement || item.description),
+      competence: normalizeText(item.competence || (item as any).competency),
+      contentScope: normalizeText(item.contentScope),
+      order: item.order ?? item.sequence ?? null,
+      p3Dimensions: normalizeStringArray(item.p3Dimensions),
+      graduateProfileDimensions: normalizeStringArray(item.graduateProfileDimensions),
+    })),
+  });
+}
+
+function pedagogicalATPFingerprint(atp?: ATPData | null): string {
+  if (!atp) return '';
+  return stableStringify({
+    academicSettingId: atp.academicSettingId,
+    tpId: atp.tpId,
+    tpDataId: atp.tpDataId,
+    academicYear: atp.academicYear,
+    subjectCode: atp.subjectCode,
+    phase: normalizePhaseCode(atp.phase) || normalizeText(atp.phase),
+    rationale: normalizeText(atp.rationale),
+    items: (atp.items || []).map((item) => ({
+      id: item.id,
+      stepNumber: item.stepNumber ?? item.sequence ?? null,
+      tpId: item.tpId,
+      tpCode: normalizeText(item.tpCode),
+      tpStatement: normalizeText(item.tpStatement),
+      materialScope: normalizeText(item.materialScope),
+      jp: item.jp ?? item.allocatedJP ?? null,
+      semester: item.semester ?? null,
+      assessmentPlan: normalizeText(item.assessmentPlan),
+      resources: normalizeText(item.resources),
+      p3Dimensions: normalizeStringArray(item.p3Dimensions),
+      graduateProfileDimensions: normalizeStringArray(item.graduateProfileDimensions),
+    })),
+  });
+}
+
+function pedagogicalCriterionFingerprint(criteria?: AssessmentCriterion[] | null): string {
+  return stableStringify((criteria || []).map((criterion) => ({
+    id: criterion.id,
+    academicSettingId: criterion.academicSettingId,
+    tpId: criterion.tpId,
+    description: normalizeText(criterion.description),
+    approach: criterion.approach,
+    passingThreshold: criterion.passingThreshold ?? null,
+    indicators: normalizeStringArray(criterion.indicators),
+    levels: stableStringify(criterion.levels || []),
+    kompleksitas: criterion.kompleksitas ?? null,
+    dayaDukung: criterion.dayaDukung ?? null,
+    intake: criterion.intake ?? null,
+  })));
+}
+
+export function classifyTPChange(oldTP?: TPData | null, newTP?: TPData | null): SemanticChangeType {
+  if (!oldTP && !newTP) return 'NONE';
+  if (pedagogicalTPFingerprint(oldTP) !== pedagogicalTPFingerprint(newTP)) return 'SUBSTANTIVE';
+  return stableStringify(oldTP || null) === stableStringify(newTP || null) ? 'NONE' : 'NON_SUBSTANTIVE';
+}
+
+export function classifyATPChange(oldATP?: ATPData | null, newATP?: ATPData | null): SemanticChangeType {
+  if (!oldATP && !newATP) return 'NONE';
+  if (pedagogicalATPFingerprint(oldATP) !== pedagogicalATPFingerprint(newATP)) return 'SUBSTANTIVE';
+  return stableStringify(oldATP || null) === stableStringify(newATP || null) ? 'NONE' : 'NON_SUBSTANTIVE';
+}
+
+export function classifyAssessmentCriteriaChange(
+  oldCriteria?: AssessmentCriterion[] | null,
+  newCriteria?: AssessmentCriterion[] | null
+): SemanticChangeType {
+  if ((!oldCriteria || oldCriteria.length === 0) && (!newCriteria || newCriteria.length === 0)) return 'NONE';
+  if (pedagogicalCriterionFingerprint(oldCriteria) !== pedagogicalCriterionFingerprint(newCriteria)) return 'SUBSTANTIVE';
+  return stableStringify(oldCriteria || []) === stableStringify(newCriteria || []) ? 'NONE' : 'NON_SUBSTANTIVE';
+}
+
 /**
  * Validasi mendalam untuk status workflow TPData (Tujuan Pembelajaran)
  */

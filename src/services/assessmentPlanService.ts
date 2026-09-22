@@ -146,6 +146,8 @@ export function validateAssessmentPlan(
     if (plan.scopeType === 'TP' || plan.scopeType === 'MULTI_TP' || plan.tpIds.length > 0) {
       if (!context.tp?.items || context.tp.items.length === 0) {
         errors.push('Sumber TP canonical Kurikulum Merdeka tidak tersedia sehingga referensi asesmen tidak dapat diverifikasi.');
+      } else if (context.tp.workflowStatus !== 'SIAP' || context.tp.needsReview) {
+        errors.push('Sumber TP canonical belum SIAP atau masih memerlukan peninjauan ulang.');
       } else {
         const validTpIds = new Set(context.tp.items.map((t) => t.id));
         const invalidTpIds = plan.tpIds.filter((id) => !validTpIds.has(id));
@@ -184,10 +186,17 @@ export function validateAssessmentPlan(
 
   // 5. KKTP Criteria References Check
   if (plan.criterionIds && plan.criterionIds.length > 0 && context.assessmentCriteria) {
-    const validCriteriaIds = new Set(context.assessmentCriteria.map((c) => c.id));
-    const invalidCriteria = plan.criterionIds.filter((cid) => !validCriteriaIds.has(cid));
+    const criteriaById = new Map(context.assessmentCriteria.map((c) => [c.id, c]));
+    const invalidCriteria = plan.criterionIds.filter((cid) => !criteriaById.has(cid));
     if (invalidCriteria.length > 0) {
       errors.push(`Terdapat ${invalidCriteria.length} referensi Kriteria Capaian (KKTP) yang tidak ditemukan pada alur hulu.`);
+    }
+    const staleCriteria = plan.criterionIds.filter((cid) => {
+      const criterion = criteriaById.get(cid);
+      return criterion && (criterion.workflowStatus !== 'SIAP' || criterion.needsReview);
+    });
+    if (staleCriteria.length > 0) {
+      errors.push(`Terdapat ${staleCriteria.length} referensi Kriteria Capaian (KKTP) yang belum SIAP atau perlu ditinjau ulang.`);
     }
   }
 

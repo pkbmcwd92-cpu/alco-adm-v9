@@ -97,7 +97,7 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
   onSaveAssessmentPackage,
   onDeleteAssessmentPackage,
 }) => {
-  const readyPlans = assessmentPlans.filter((p) => p.workflowStatus === 'SIAP');
+  const readyPlans = assessmentPlans.filter((p) => p.workflowStatus === 'SIAP' && p.needsReview !== true);
 
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
 
@@ -165,7 +165,7 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
 
   // Helper to handle creation of new empty package
   const handleCreatePackage = () => {
-    if (!selectedPlan || selectedPlan.workflowStatus !== 'SIAP') return;
+    if (!selectedPlan || selectedPlan.workflowStatus !== 'SIAP' || selectedPlan.needsReview) return;
     const newPkg = createEmptyAssessmentPackage(selectedPlan, academicSetting.id, workspace?.id);
     onSaveAssessmentPackage(newPkg);
     setValidationReport(null);
@@ -585,7 +585,7 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
           >
             <option value="">-- Pilih Rencana Asesmen --</option>
             {assessmentPlans.map((plan) => {
-              const isReady = plan.workflowStatus === 'SIAP';
+              const isReady = plan.workflowStatus === 'SIAP' && plan.needsReview !== true;
               return (
                 <option key={plan.id} value={plan.id} disabled={!isReady}>
                   {plan.displayLabel || plan.title} [{plan.workflowStatus}]{!isReady ? ' - (Belum SIAP)' : ''}

@@ -135,6 +135,14 @@ export const KKTPManager: React.FC<KKTPManagerProps> = ({
 
   const handleGenerateAI = () => {
     if (!activeItem) return;
+    if (!isK13Curriculum && (!tp || tp.workflowStatus !== 'SIAP' || tp.needsReview)) {
+      setNotification({
+        message: `TP belum SIAP untuk rekomendasi KKTP (${tp?.workflowStatus || 'BELUM_DIMULAI'}). Tinjau TP terlebih dahulu.`,
+        type: 'warning',
+      });
+      setTimeout(() => setNotification(null), 4000);
+      return;
+    }
     const scope = activeItem.contentScope || activeItem.statement;
     const comp = activeItem.competency || 'kompetensi inti';
 
@@ -273,6 +281,14 @@ export const KKTPManager: React.FC<KKTPManagerProps> = ({
 
   const handleConfirmCurrent = () => {
     if (!activeItem) return;
+    if (!isK13Curriculum && (!tp || tp.workflowStatus !== 'SIAP' || tp.needsReview)) {
+      setNotification({
+        message: `KKTP belum dapat dikonfirmasi karena TP belum SIAP (${tp?.workflowStatus || 'BELUM_DIMULAI'}).`,
+        type: 'warning',
+      });
+      setTimeout(() => setNotification(null), 4000);
+      return;
+    }
     const currentGenBy =
       activeCriterion?.generatedBy === 'AI' ? 'AI_EDITED_BY_TEACHER' : activeCriterion?.generatedBy || 'TEACHER';
 

@@ -32,7 +32,14 @@ import {
   AssessmentPackage,
 } from '../types';
 import { getCurriculumTypeFromSetting } from './curriculumRouter';
-import { validateATPReferences, normalizeATPReferences, validateATPDataWorkflow } from './cpWorkflowService';
+import {
+  validateATPReferences,
+  normalizeATPReferences,
+  validateATPDataWorkflow,
+  classifyTPChange,
+  classifyATPChange,
+  classifyAssessmentCriteriaChange,
+} from './cpWorkflowService';
 import {
   migrateLegacyLearningPlan,
   invalidatePlanIfDependenciesChanged,
@@ -1524,9 +1531,11 @@ export function saveCP(cp: CPData): void {
 export function saveTP(tp: TPData): void {
   const current = loadAppStorage();
   const oldTP = current.tps.find((t) => t.academicSettingId === tp.academicSettingId);
+  const changeType = classifyTPChange(oldTP, tp);
+  const now = new Date().toISOString();
   const updatedTP = {
     ...tp,
-    updatedAt: new Date().toISOString(),
+    updatedAt: changeType === 'SUBSTANTIVE' || !oldTP ? now : oldTP.updatedAt,
   };
   const idx = current.tps.findIndex((t) => t.academicSettingId === tp.academicSettingId);
   if (idx >= 0) {
@@ -1535,50 +1544,78 @@ export function saveTP(tp: TPData): void {
     current.tps.push(updatedTP);
   }
 
-  // Cascading invalidation: Check if ATP references to TP items are still valid
-  const atpIdx = (current.atps || []).findIndex((a) => a.academicSettingId === tp.academicSettingId);
-  if (atpIdx >= 0 && current.atps[atpIdx].items && current.atps[atpIdx].items.length > 0) {
-    const atpObj = current.atps[atpIdx];
-    const val = validateATPDataWorkflow(atpObj, updatedTP);
-    current.atps[atpIdx] = {
-      ...atpObj,
-      workflowStatus: val.status,
-      needsReview: true,
-      reviewReason: 'Tujuan Pembelajaran (TP) acuan telah diperbarui, alur ATP perlu ditinjau ulang.',
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  // Cascading invalidation: Invalidate KKTP criteria if TP updated (Audit No. 6)
-  if (current.assessmentCriteria && current.assessmentCriteria.length > 0) {
-    current.assessmentCriteria = current.assessmentCriteria.map((c) => {
-      if (c.academicSettingId === tp.academicSettingId) {
-        return {
-          ...c,
-          needsReview: true,
-          reviewReason: 'Tujuan Pembelajaran (TP) acuan telah diperbarui. Kriteria ketercapaian perlu ditinjau ulang.',
-          workflowStatus: 'PERLU_DILENGKAPI',
-        };
-      }
-      return c;
-    });
-  }
-
   const oldTpIds = new Set((oldTP?.items || []).map((item) => item.id));
   const newTpIds = new Set((updatedTP.items || []).map((item) => item.id));
   const affectedTpIds = new Set<string>([...oldTpIds, ...newTpIds]);
 
-  current.learningPlans = (current.learningPlans || []).map((plan) => {
-    if (plan.academicSettingId !== tp.academicSettingId || plan.status !== 'SIAP') return plan;
-    const referenced = (plan.tpIds || []).some((id) => affectedTpIds.has(id));
-    if (!referenced) return plan;
-    return {
-      ...plan,
-      status: 'PERLU_DILENGKAPI',
-      confirmedAt: undefined,
-      updatedAt: new Date().toISOString(),
-    };
-  });
+  if (changeType === 'SUBSTANTIVE') {
+    const atpIdx = (current.atps || []).findIndex((a) => a.academicSettingId === tp.academicSettingId);
+    if (atpIdx >= 0 && current.atps[atpIdx].items && current.atps[atpIdx].items.length > 0) {
+      const atpObj = current.atps[atpIdx];
+      current.atps[atpIdx] = {
+        ...atpObj,
+        workflowStatus: 'PERLU_DILENGKAPI',
+        needsReview: true,
+        reviewReason: 'Tujuan Pembelajaran (TP) acuan telah berubah secara substantif, alur ATP perlu ditinjau ulang.',
+      };
+    }
+
+    if (current.assessmentCriteria && current.assessmentCriteria.length > 0) {
+      current.assessmentCriteria = current.assessmentCriteria.map((c) => {
+        if (c.academicSettingId === tp.academicSettingId) {
+          return {
+            ...c,
+            needsReview: true,
+            reviewReason: 'Tujuan Pembelajaran (TP) acuan telah berubah secara substantif. Kriteria ketercapaian perlu ditinjau ulang.',
+            workflowStatus: 'PERLU_DILENGKAPI',
+          };
+        }
+        return c;
+      });
+    }
+
+    current.learningPlans = (current.learningPlans || []).map((plan) => {
+      if (plan.academicSettingId !== tp.academicSettingId || plan.status !== 'SIAP') return plan;
+      const referenced = (plan.tpIds || []).some((id) => affectedTpIds.has(id));
+      if (!referenced) return plan;
+      return {
+        ...plan,
+        status: 'PERLU_DILENGKAPI',
+        confirmedAt: undefined,
+        updatedAt: now,
+      };
+    });
+
+    current.assessmentPlans = (current.assessmentPlans || []).map((plan) => {
+      if (plan.academicSettingId !== tp.academicSettingId) return plan;
+      const referenced = (plan.tpIds || []).some((id) => affectedTpIds.has(id));
+      if (!referenced) return plan;
+      return {
+        ...plan,
+        workflowStatus: 'PERLU_DILENGKAPI',
+        needsReview: true,
+        reviewReason: 'Tujuan Pembelajaran (TP) acuan berubah secara substantif.',
+        updatedAt: now,
+      };
+    });
+
+    const affectedAssessmentPlanIds = new Set(
+      (current.assessmentPlans || [])
+        .filter((plan) => plan.academicSettingId === tp.academicSettingId && (plan.tpIds || []).some((id) => affectedTpIds.has(id)))
+        .map((plan) => plan.id)
+    );
+    current.assessmentPackages = (current.assessmentPackages || []).map((pkg) => {
+      const blueprintRefsTp = (pkg.blueprintItems || []).some((item) => affectedTpIds.has(item.objectiveRefId));
+      if (pkg.academicSettingId !== tp.academicSettingId || (!affectedAssessmentPlanIds.has(pkg.assessmentPlanId) && !blueprintRefsTp)) return pkg;
+      return {
+        ...pkg,
+        workflowStatus: 'PERLU_DILENGKAPI',
+        needsReview: true,
+        reviewReason: 'Tujuan Pembelajaran (TP) acuan berubah secara substantif.',
+        updatedAt: now,
+      };
+    });
+  }
 
   saveAppStorage(current);
 }
@@ -1588,6 +1625,8 @@ export function saveATP(atp: ATPData): void {
   const tp = current.tps.find((t) => t.academicSettingId === atp.academicSettingId);
   const oldATP = current.atps.find((a) => a.academicSettingId === atp.academicSettingId);
   const normalizedATP = normalizeATPReferences(atp, tp);
+  const changeType = classifyATPChange(oldATP, normalizedATP);
+  const now = new Date().toISOString();
 
   const val = validateATPDataWorkflow(normalizedATP, tp);
   const hasUnknownJP = (normalizedATP?.items || []).some((item) => item.jp === undefined || item.jp === null);
@@ -1608,10 +1647,10 @@ export function saveATP(atp: ATPData): void {
     hasUnknownJP,
     allocationComplete: !hasUnknownJP,
     workflowStatus: val.status,
-    needsReview: val.issues.length > 0 ? true : false,
-    reviewReason: val.issues.length > 0 ? val.issues.join('; ') : undefined,
+    needsReview: atp.needsReview === true && atp.workflowStatus !== 'SIAP' ? true : val.issues.length > 0 ? true : false,
+    reviewReason: atp.needsReview === true && atp.workflowStatus !== 'SIAP' ? atp.reviewReason : val.issues.length > 0 ? val.issues.join('; ') : undefined,
     basedOnTpUpdatedAt: tp?.updatedAt || atp.basedOnTpUpdatedAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: changeType === 'SUBSTANTIVE' || !oldATP ? now : oldATP.updatedAt,
   };
 
   const idx = current.atps.findIndex((a) => a.academicSettingId === atp.academicSettingId);
@@ -1629,18 +1668,20 @@ export function saveATP(atp: ATPData): void {
     ...(oldATP?.items || []).map((item) => item.tpId).filter(Boolean) as string[],
     ...(updatedATP.items || []).map((item) => item.tpId).filter(Boolean) as string[],
   ]);
-  current.learningPlans = (current.learningPlans || []).map((plan) => {
-    if (plan.academicSettingId !== atp.academicSettingId || plan.status !== 'SIAP') return plan;
-    const referencesAtp = (plan.atpItemIds || []).some((id) => affectedAtpItemIds.has(id));
-    const referencesTp = (plan.tpIds || []).some((id) => affectedTpIds.has(id));
-    if (!referencesAtp && !referencesTp) return plan;
-    return {
-      ...plan,
-      status: 'PERLU_DILENGKAPI',
-      confirmedAt: undefined,
-      updatedAt: new Date().toISOString(),
-    };
-  });
+  if (changeType === 'SUBSTANTIVE') {
+    current.learningPlans = (current.learningPlans || []).map((plan) => {
+      if (plan.academicSettingId !== atp.academicSettingId || plan.status !== 'SIAP') return plan;
+      const referencesAtp = (plan.atpItemIds || []).some((id) => affectedAtpItemIds.has(id));
+      const referencesTp = (plan.tpIds || []).some((id) => affectedTpIds.has(id));
+      if (!referencesAtp && !referencesTp) return plan;
+      return {
+        ...plan,
+        status: 'PERLU_DILENGKAPI',
+        confirmedAt: undefined,
+        updatedAt: now,
+      };
+    });
+  }
 
   saveAppStorage(current);
 }
@@ -1739,6 +1780,14 @@ export function deleteAttendanceSession(sessionId: string): void {
 export function saveAssessmentCriteria(criteria: AssessmentCriterion[]): void {
   const current = loadAppStorage();
   const academicSettingId = criteria[0]?.academicSettingId;
+  const oldCriteria = academicSettingId
+    ? (current.assessmentCriteria || []).filter((c) => c.academicSettingId === academicSettingId)
+    : (current.assessmentCriteria || []).filter((c) => criteria.some((next) => next.id === c.id));
+  const changeType = classifyAssessmentCriteriaChange(oldCriteria, criteria);
+  const oldCriterionIds = new Set(oldCriteria.map((c) => c.id));
+  const newCriterionIds = new Set(criteria.map((c) => c.id));
+  const affectedCriterionIds = new Set<string>([...oldCriterionIds, ...newCriterionIds]);
+  const now = new Date().toISOString();
   if (academicSettingId) {
     current.assessmentCriteria = [
       ...(current.assessmentCriteria || []).filter((c) => c.academicSettingId !== academicSettingId),
@@ -1749,6 +1798,36 @@ export function saveAssessmentCriteria(criteria: AssessmentCriterion[]): void {
     const existingMap = new Map((current.assessmentCriteria || []).map((c) => [c.id, c]));
     criteria.forEach((c) => existingMap.set(c.id, c));
     current.assessmentCriteria = Array.from(existingMap.values());
+  }
+  if (academicSettingId && changeType === 'SUBSTANTIVE') {
+    current.assessmentPlans = (current.assessmentPlans || []).map((plan) => {
+      if (plan.academicSettingId !== academicSettingId) return plan;
+      const referenced = (plan.criterionIds || []).some((id) => affectedCriterionIds.has(id));
+      if (!referenced) return plan;
+      return {
+        ...plan,
+        workflowStatus: 'PERLU_DILENGKAPI',
+        needsReview: true,
+        reviewReason: 'Kriteria ketercapaian (KKTP) berubah secara substantif.',
+        updatedAt: now,
+      };
+    });
+    const affectedPlanIds = new Set(
+      (current.assessmentPlans || [])
+        .filter((plan) => plan.academicSettingId === academicSettingId && (plan.criterionIds || []).some((id) => affectedCriterionIds.has(id)))
+        .map((plan) => plan.id)
+    );
+    current.assessmentPackages = (current.assessmentPackages || []).map((pkg) => {
+      const blueprintRefsCriterion = (pkg.blueprintItems || []).some((item) => affectedCriterionIds.has((item as any).criterionId || ''));
+      if (pkg.academicSettingId !== academicSettingId || (!affectedPlanIds.has(pkg.assessmentPlanId) && !blueprintRefsCriterion)) return pkg;
+      return {
+        ...pkg,
+        workflowStatus: 'PERLU_DILENGKAPI',
+        needsReview: true,
+        reviewReason: 'Kriteria ketercapaian (KKTP) berubah secara substantif.',
+        updatedAt: now,
+      };
+    });
   }
   saveAppStorage(current);
 }

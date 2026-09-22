@@ -11,6 +11,7 @@ import {
   User,
   GraduationCap,
   BookOpen,
+  Clipboard,
 } from 'lucide-react';
 import {
   TeacherProfile,
@@ -48,6 +49,7 @@ import { FollowUpManager } from './FollowUpManager';
 import { LearningPlanManager } from './LearningPlanManager';
 import { AdminDocsExport } from '../AdminDocsExport';
 import { isK13 } from '../../services/curriculumRouter';
+import { buildAdministrationChainDiagnosticReport } from '../../services/diagnosticService';
 
 export type AdministrationTab =
   | 'time_planning'
@@ -154,6 +156,28 @@ export const AdministrationHub: React.FC<AdministrationHubProps> = ({
   const isK13Active = isK13(academicSetting);
   const [activeTab, setActiveTab] = useState<AdministrationTab>(initialTab);
   const [assessmentSubTab, setAssessmentSubTab] = useState<'plan_master' | 'package_builder' | 'gradebook'>('plan_master');
+  const [diagnosticNotice, setDiagnosticNotice] = useState<string | null>(null);
+
+  const handleCopyChainDiagnostic = async () => {
+    const report = buildAdministrationChainDiagnosticReport({
+      workspaceId: workspace?.id,
+      academicSetting,
+      tp,
+      atp,
+      learningPlans,
+      assessmentCriteria,
+      assessmentPlans,
+      assessmentPackages,
+    });
+
+    try {
+      await navigator.clipboard.writeText(report);
+      setDiagnosticNotice('Laporan diagnostik rantai disalin.');
+    } catch (err) {
+      console.error('Failed to copy administration chain diagnostic:', err);
+      setDiagnosticNotice('Gagal menyalin laporan diagnostik.');
+    }
+  };
 
   const tabs = [
     {
@@ -254,6 +278,15 @@ export const AdministrationHub: React.FC<AdministrationHubProps> = ({
           <div className="flex items-center gap-2 self-start lg:self-center">
             <button
               type="button"
+              onClick={handleCopyChainDiagnostic}
+              className="text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 transition-colors cursor-pointer inline-flex items-center gap-1.5"
+              title="Salin diagnostik rantai administrasi"
+            >
+              <Clipboard className="w-3.5 h-3.5" />
+              <span>Diagnostik</span>
+            </button>
+            <button
+              type="button"
               onClick={() => onBackToStep(isK13Active ? 'k13-tujuan' : 'atp')}
               className="text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 transition-colors cursor-pointer"
             >
@@ -261,6 +294,11 @@ export const AdministrationHub: React.FC<AdministrationHubProps> = ({
             </button>
           </div>
         </div>
+        {diagnosticNotice && (
+          <div className="mt-3 text-xs text-slate-300 bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2">
+            {diagnosticNotice}
+          </div>
+        )}
 
         {/* Tab Navigation Pill Bar */}
         <div className="mt-6 pt-4 border-t border-slate-800/80 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">

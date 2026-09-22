@@ -109,6 +109,9 @@ export function validateAssessmentPackage(
     if (parentPlan.workflowStatus !== 'SIAP') {
       errors.push(`Rencana Asesmen induk "${parentPlan.title}" belum berstatus SIAP.`);
     }
+    if (parentPlan.needsReview) {
+      errors.push(`Rencana Asesmen induk "${parentPlan.title}" masih memerlukan peninjauan ulang.`);
+    }
 
     // Instrument Type Coherence with Parent Plan
     const planInstrumentTypes = new Set((parentPlan.instruments || []).map((i) => i.type));
@@ -140,6 +143,8 @@ export function validateAssessmentPackage(
     } else if (curType === 'KURIKULUM_MERDEKA') {
       if (!context.tp || !context.tp.items) {
         errors.push('Sumber data TP (TPData) tidak tersedia atau tidak dapat diverifikasi.');
+      } else if (context.tp.workflowStatus !== 'SIAP' || context.tp.needsReview) {
+        errors.push('Sumber data TP belum SIAP atau masih memerlukan peninjauan ulang.');
       } else {
         const validObjectiveIds = new Set(context.tp.items.map((t) => t.id));
         pkg.blueprintItems.forEach((bp, idx) => {
@@ -241,9 +246,11 @@ export function validateAssessmentPackage(
             `Butir kisi-kisi #${idx + 1} menggunakan criterionId [${bp.criterionId}], tetapi sumber kriteria KKTP tidak tersedia.`
           );
         } else {
-          const critExists = context.assessmentCriteria.some((c) => c.id === bp.criterionId);
-          if (!critExists) {
+          const criterion = context.assessmentCriteria.find((c) => c.id === bp.criterionId);
+          if (!criterion) {
             errors.push(`Butir kisi-kisi #${idx + 1} merujuk pada kriteria KKTP [${bp.criterionId}] yang tidak ditemukan.`);
+          } else if (criterion.workflowStatus !== 'SIAP' || criterion.needsReview) {
+            errors.push(`Butir kisi-kisi #${idx + 1} merujuk pada kriteria KKTP [${bp.criterionId}] yang belum SIAP atau perlu ditinjau ulang.`);
           }
         }
       }
@@ -907,6 +914,8 @@ export function invalidateAssessmentPackageDependencies(
     reasons.push('Parent AssessmentPlan tidak ditemukan atau telah dihapus.');
   } else if (context.assessmentPlan.workflowStatus !== 'SIAP') {
     reasons.push(`Parent AssessmentPlan "${context.assessmentPlan.title}" tidak lagi berstatus SIAP.`);
+  } else if (context.assessmentPlan.needsReview) {
+    reasons.push(`Parent AssessmentPlan "${context.assessmentPlan.title}" masih membutuhkan review.`);
   } else {
     // Check instrument types in plan match package
     const planInstTypes = new Set((context.assessmentPlan.instruments || []).map((i) => i.type));
@@ -928,6 +937,8 @@ export function invalidateAssessmentPackageDependencies(
     } else if (curType === 'KURIKULUM_MERDEKA') {
       if (!context.tp || !context.tp.items) {
         reasons.push('Sumber data TP (TPData) tidak tersedia atau telah dihapus.');
+      } else if (context.tp.workflowStatus !== 'SIAP' || context.tp.needsReview) {
+        reasons.push('Sumber data TP canonical belum SIAP atau masih membutuhkan review.');
       } else {
         const validTpIds = new Set(context.tp.items.map((t) => t.id));
         const invalidBp = pkg.blueprintItems.filter((bp) => !validTpIds.has(bp.objectiveRefId));
@@ -952,8 +963,13 @@ export function invalidateAssessmentPackageDependencies(
       if (bp.criterionId) {
         if (!context.assessmentCriteria) {
           reasons.push('Sumber data kriteria KKTP tidak tersedia atau telah dihapus.');
-        } else if (!context.assessmentCriteria.some((c) => c.id === bp.criterionId)) {
-          reasons.push(`Kriteria KKTP [${bp.criterionId}] tidak lagi ditemukan pada sumber kriteria.`);
+        } else {
+          const criterion = context.assessmentCriteria.find((c) => c.id === bp.criterionId);
+          if (!criterion) {
+            reasons.push(`Kriteria KKTP [${bp.criterionId}] tidak lagi ditemukan pada sumber kriteria.`);
+          } else if (criterion.workflowStatus !== 'SIAP' || criterion.needsReview) {
+            reasons.push(`Kriteria KKTP [${bp.criterionId}] belum SIAP atau masih membutuhkan review.`);
+          }
         }
       }
     });

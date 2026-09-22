@@ -19,6 +19,7 @@ import {
   AssessmentPlanItem,
   LearningResource,
 } from '../types';
+import { validateATPReferences } from './cpWorkflowService';
 
 export const LEARNING_EXPERIENCE_PHASE_LABELS: Record<LearningExperiencePhase, string> = {
   UNDERSTAND: 'Memahami',
@@ -407,6 +408,24 @@ export function validateLearningPlan(
     k13Analysis: context.k13Analysis,
     curriculumType: plan.curriculumType,
   });
+
+  if (plan.curriculumType === 'KURIKULUM_MERDEKA') {
+    if (plan.tpIds && plan.tpIds.length > 0) {
+      if (!context.tp || context.tp.workflowStatus !== 'SIAP' || context.tp.needsReview) {
+        errors.push('TP acuan belum SIAP atau masih memerlukan peninjauan ulang.');
+      }
+    }
+    if (plan.atpItemIds && plan.atpItemIds.length > 0) {
+      if (!context.atp || context.atp.workflowStatus !== 'SIAP' || context.atp.needsReview) {
+        errors.push('ATP acuan belum SIAP atau masih memerlukan peninjauan ulang.');
+      } else {
+        const atpRuntime = validateATPReferences(context.atp, context.tp || undefined);
+        if (!atpRuntime.isSiap) {
+          errors.push('ATP acuan tidak lolos validasi runtime terhadap TP kanonikal.');
+        }
+      }
+    }
+  }
 
   // 2. Validate Canonical TP Dependency (Strict ID lookup - NO text matching)
   if (!plan.tpIds || !Array.isArray(plan.tpIds) || plan.tpIds.length === 0) {

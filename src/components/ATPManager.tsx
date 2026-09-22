@@ -64,6 +64,7 @@ export const ATPManager: React.FC<ATPManagerProps> = ({
   }, [atp]);
 
   const hasTP = tp.items && tp.items.length > 0;
+  const isTPReady = hasTP && tp.workflowStatus === 'SIAP' && tp.needsReview !== true;
   const knownTotalJP = items.reduce((acc, curr) => acc + (curr.jp !== undefined && curr.jp !== null ? Number(curr.jp) : 0), 0);
   const hasUnknownJP = items.some((item) => item.jp === undefined || item.jp === null);
 
@@ -79,6 +80,10 @@ export const ATPManager: React.FC<ATPManagerProps> = ({
   const handleGenerateAI = async () => {
     if (!hasTP) {
       alert('Daftar TP belum tersedia. Harap rumuskan TP pada tahap 04 terlebih dahulu.');
+      return;
+    }
+    if (!isTPReady) {
+      alert(`TP belum SIAP untuk menyusun ATP. Status TP: ${tp.workflowStatus || 'BELUM_DIMULAI'}${tp.needsReview ? ' dan perlu ditinjau ulang' : ''}.`);
       return;
     }
 
@@ -186,7 +191,9 @@ export const ATPManager: React.FC<ATPManagerProps> = ({
       hasUnknownJP,
       allocationComplete: !hasUnknownJP,
       generatedBy: isAiOrigin ? 'AI_EDITED_BY_TEACHER' : 'TEACHER',
-      basedOnTpUpdatedAt: tp.updatedAt || new Date().toISOString(),
+      needsReview: atp.needsReview,
+      reviewReason: atp.reviewReason,
+      basedOnTpUpdatedAt: atp.basedOnTpUpdatedAt,
       updatedAt: new Date().toISOString(),
     };
     onSaveATP(updated);
@@ -211,6 +218,8 @@ export const ATPManager: React.FC<ATPManagerProps> = ({
       hasUnknownJP,
       allocationComplete: !hasUnknownJP,
       workflowStatus: 'SIAP',
+      needsReview: false,
+      reviewReason: undefined,
       generatedBy: isAiOrigin ? 'AI_EDITED_BY_TEACHER' : (atp.generatedBy || 'TEACHER'),
       basedOnTpUpdatedAt: tp.updatedAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -238,7 +247,18 @@ export const ATPManager: React.FC<ATPManagerProps> = ({
       alert('Susun minimal 1 butir Alur Tujuan Pembelajaran (ATP) sebelum mengekspor dokumen.');
       return;
     }
-    handleSave();
+    const candidate: ATPData = {
+      ...atp,
+      rationale,
+      items: items.map((item, idx) => ({ ...item, stepNumber: idx + 1 })),
+      workflowStatus: atp.workflowStatus,
+      needsReview: atp.needsReview,
+    };
+    const val = validateATPReferences(candidate, tp);
+    if (!val.isSiap || atp.workflowStatus !== 'SIAP' || atp.needsReview) {
+      alert(`ATP belum SIAP untuk dilanjutkan: ${val.issues[0] || atp.reviewReason || 'Konfirmasi dan finalisasi ATP terlebih dahulu.'}`);
+      return;
+    }
     onNextStep();
   };
 

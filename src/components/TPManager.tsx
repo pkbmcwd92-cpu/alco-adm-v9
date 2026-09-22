@@ -132,6 +132,11 @@ export const TPManager: React.FC<TPManagerProps> = ({
     setSaveNotice(message);
   };
 
+  const markDirty = () => {
+    setIsDirty(true);
+    setSaveNotice(null);
+  };
+
   const persistTP = (source: 'AI_AUTO' | 'MANUAL' | 'STATUS_SYNC' | 'CONFIRM_ALIGNMENT') => {
     const updatedItems = items.map((item, idx) => ({ ...item, order: idx + 1 }));
     const nextGeneratedBy =
@@ -140,6 +145,7 @@ export const TPManager: React.FC<TPManagerProps> = ({
         : tp.generatedBy === 'AI'
         ? 'AI_EDITED_BY_TEACHER'
         : tp.generatedBy || 'TEACHER';
+    const isAlignmentIntent = source === 'AI_AUTO' || source === 'CONFIRM_ALIGNMENT';
     const candidateTP: TPData = {
       ...tp,
       academicSettingId: academicSetting.id,
@@ -152,10 +158,10 @@ export const TPManager: React.FC<TPManagerProps> = ({
       phase: context.phase,
       items: updatedItems,
       generatedBy: nextGeneratedBy,
-      needsReview: source === 'CONFIRM_ALIGNMENT' || source === 'MANUAL' || source === 'STATUS_SYNC' ? false : tp.needsReview,
-      reviewReason: undefined,
-      basedOnCpUpdatedAt: cp.updatedAt || new Date().toISOString(),
-      basedOnAnalysisUpdatedAt: cpAnalysis?.updatedAt || new Date().toISOString(),
+      needsReview: isAlignmentIntent ? false : tp.needsReview,
+      reviewReason: isAlignmentIntent ? undefined : tp.reviewReason,
+      basedOnCpUpdatedAt: isAlignmentIntent ? (cp.updatedAt || new Date().toISOString()) : tp.basedOnCpUpdatedAt,
+      basedOnAnalysisUpdatedAt: isAlignmentIntent ? (cpAnalysis?.updatedAt || new Date().toISOString()) : tp.basedOnAnalysisUpdatedAt,
       updatedAt: new Date().toISOString(),
     };
     const val = validateTPDataWorkflow(candidateTP, cp, cpAnalysis, academicSetting);
@@ -341,7 +347,7 @@ export const TPManager: React.FC<TPManagerProps> = ({
 
     const reordered = newItems.map((it, idx) => ({ ...it, order: idx + 1 }));
     setItems(reordered);
-    setIsDirty(true);
+    markDirty();
   };
 
   const handleDelete = (id: string) => {
@@ -349,7 +355,7 @@ export const TPManager: React.FC<TPManagerProps> = ({
       const filtered = items.filter((i) => i.id !== id);
       const reordered = filtered.map((it, idx) => ({ ...it, order: idx + 1 }));
       setItems(reordered);
-      setIsDirty(true);
+      markDirty();
     }
   };
 
@@ -399,7 +405,7 @@ export const TPManager: React.FC<TPManagerProps> = ({
 
     const reordered = newItems.map((it, idx) => ({ ...it, order: idx + 1 }));
     setItems(reordered);
-    setIsDirty(true);
+    markDirty();
     setIsEditing(false);
     setCurrentItem(null);
   };
