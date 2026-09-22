@@ -14,11 +14,11 @@ export interface OfficialJPRule {
 }
 
 export interface JPRuleLookupResult {
-  weeklyJP: number;
+  weeklyJP: number | null;
   annualJP?: number;
   isOfficial: boolean;
   regulationReference?: string;
-  curriculumType: CurriculumType;
+  curriculumType?: CurriculumType;
 }
 
 /**
@@ -39,11 +39,21 @@ export const OFFICIAL_JP_DATABASE: OfficialJPRule[] = MASTER_CURRICULUM_STRUCTUR
  * Delegates to centralized getSubjectJP in jpEngine.ts.
  */
 export function lookupOfficialWeeklyJP(
-  curriculum: string,
-  level: string = 'SD',
-  grade: string = 'Kelas 1',
-  subject: string = 'Bahasa Indonesia'
+  curriculum?: string,
+  level?: string,
+  grade?: string,
+  subject?: string
 ): JPRuleLookupResult {
+  if (!curriculum || !level || !grade || !subject) {
+    return {
+      weeklyJP: null,
+      annualJP: undefined,
+      isOfficial: false,
+      regulationReference: undefined,
+      curriculumType: undefined,
+    };
+  }
+
   const result = getSubjectJP({
     curriculum,
     level,
@@ -52,7 +62,7 @@ export function lookupOfficialWeeklyJP(
   });
 
   return {
-    weeklyJP: result.weeklyJP,
+    weeklyJP: result.weeklyJP ?? null,
     annualJP: result.annualJP,
     isOfficial: result.isOfficial,
     regulationReference: result.isOfficial ? result.regulation : undefined,

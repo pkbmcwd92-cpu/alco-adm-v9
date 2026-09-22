@@ -1419,7 +1419,13 @@ export function saveCPAnalysis(analysis: CPAnalysisData): void {
 export function saveAcademicSetting(setting: AcademicSetting, customWorkspaceName?: string): boolean {
   const current = loadAppStorage();
   const derived = (setting.level && setting.grade) ? getPhaseFromGrade(setting.level, setting.grade) : '';
-  const normalized = { ...setting, phase: derived, updatedAt: new Date().toISOString() };
+  const curType = getCurriculumTypeFromSetting(setting);
+  const normalized: AcademicSetting = {
+    ...setting,
+    curriculumType: curType,
+    phase: derived,
+    updatedAt: new Date().toISOString(),
+  };
 
   const idx = current.academicSettings.findIndex((a) => a.id === setting.id);
   const ws = current.workspaces.find((w) => w.academicSettingId === setting.id);
@@ -1433,6 +1439,47 @@ export function saveAcademicSetting(setting: AcademicSetting, customWorkspaceNam
       return false;
     }
     current.academicSettings.push(normalized);
+  }
+
+  // Deterministic creation of empty containers when curriculum is chosen
+  if (curType === 'KURIKULUM_MERDEKA') {
+    if (!current.cps.some((c) => c.academicSettingId === setting.id)) {
+      current.cps.push({
+        id: `cp-${setting.id}`,
+        academicSettingId: setting.id,
+        generalDescription: '',
+        elements: [],
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    if (!current.tps.some((t) => t.academicSettingId === setting.id)) {
+      current.tps.push({
+        id: `tp-${setting.id}`,
+        academicSettingId: setting.id,
+        items: [],
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    if (!current.atps.some((a) => a.academicSettingId === setting.id)) {
+      current.atps.push({
+        id: `atp-${setting.id}`,
+        academicSettingId: setting.id,
+        rationale: '',
+        items: [],
+        totalJP: 0,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  } else if (curType === 'K13') {
+    current.k13Analyses = current.k13Analyses || [];
+    if (!current.k13Analyses.some((k) => k.academicSettingId === setting.id)) {
+      current.k13Analyses.push({
+        id: `k13-ana-${setting.id}`,
+        academicSettingId: setting.id,
+        items: [],
+        updatedAt: new Date().toISOString(),
+      });
+    }
   }
 
   // Sync workspace name

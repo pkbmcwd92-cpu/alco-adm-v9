@@ -578,7 +578,9 @@ const planDurationPositive: LearningPlan = {
   id: 'plan-dur-pos',
   learningSteps: { opening: [], core: [], closing: [] },
   learningExperiences: [
-    { id: 'exp-pos', phase: 'UNDERSTAND', description: 'Valid positive duration', durationMinutes: 45 },
+    { id: 'exp-pos-1', phase: 'UNDERSTAND', description: 'Valid positive duration understand', durationMinutes: 45 },
+    { id: 'exp-pos-2', phase: 'APPLY', description: 'Valid positive duration apply', durationMinutes: 45 },
+    { id: 'exp-pos-3', phase: 'REFLECT', description: 'Valid positive duration reflect', durationMinutes: 15 },
   ],
 };
 const resAH = validateLearningPlan(planDurationPositive, {
@@ -595,7 +597,9 @@ const planNoDuration: LearningPlan = {
   id: 'plan-dur-none',
   learningSteps: { opening: [], core: [], closing: [] },
   learningExperiences: [
-    { id: 'exp-none', phase: 'UNDERSTAND', description: 'No duration specified' },
+    { id: 'exp-none-1', phase: 'UNDERSTAND', description: 'No duration specified understand' },
+    { id: 'exp-none-2', phase: 'APPLY', description: 'No duration specified apply' },
+    { id: 'exp-none-3', phase: 'REFLECT', description: 'No duration specified reflect' },
   ],
 };
 const resAI = validateLearningPlan(planNoDuration, {
@@ -677,6 +681,7 @@ const planCanonicalNoCore: LearningPlan = {
   learningExperiences: [
     { id: 'exp-can-1', phase: 'UNDERSTAND', description: 'Memahami konsep' },
     { id: 'exp-can-2', phase: 'APPLY', description: 'Menerapkan konsep' },
+    { id: 'exp-can-3', phase: 'REFLECT', description: 'Merefleksi konsep' },
   ],
 };
 const resAO = validateLearningPlan(planCanonicalNoCore, {

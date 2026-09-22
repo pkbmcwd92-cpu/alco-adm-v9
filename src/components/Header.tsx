@@ -136,8 +136,13 @@ export const Header: React.FC<HeaderProps> = ({
                 id="btn-header-new-workspace"
                 type="button"
                 onClick={onCreateWorkspaceClick}
-                className="p-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs transition-colors shrink-0 shadow-xs cursor-pointer"
-                title="Buat Administrasi / Kelas Baru (+)"
+                disabled={!activeProfile}
+                className={`p-1 rounded-lg text-white text-xs transition-colors shrink-0 shadow-xs ${
+                  activeProfile
+                    ? 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
+                    : 'bg-slate-300 cursor-not-allowed opacity-50'
+                }`}
+                title={activeProfile ? "Buat Administrasi / Kelas Baru (+)" : "Buat profil guru terlebih dahulu"}
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>

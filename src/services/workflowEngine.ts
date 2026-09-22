@@ -44,9 +44,9 @@ export interface AdministrationContext {
   teacherProfileId: string;
   schoolId: string;
   academicYear: string;
-  semester: 1 | 2;
-  curriculumType: CurriculumType;
-  level: 'SD' | 'SMP' | 'SMA' | 'SMK';
+  semester?: 1 | 2;
+  curriculumType?: CurriculumType;
+  level: 'SD' | 'SMP' | 'SMA' | 'SMK' | '';
   grade: number;
   rawGrade: string;
   subjectCode: string;
@@ -71,18 +71,18 @@ export function buildAdministrationContext(data: {
 }): AdministrationContext {
   const { workspace, profile, school, academicSetting } = data;
 
-  const curriculumType: CurriculumType = academicSetting
-    ? isK13(academicSetting)
-      ? 'K13'
-      : 'KURIKULUM_MERDEKA'
-    : 'KURIKULUM_MERDEKA';
+  const curriculumType: CurriculumType | undefined = getCurriculumTypeFromSetting(academicSetting);
 
   // Extract raw inputs without injecting false default values
   const schoolId = school?.id || profile?.schoolId || '';
   const teacherProfileId = profile?.id || '';
   const workspaceId = workspace?.id || (academicSetting?.id ? `ws-${academicSetting.id}` : '');
   const academicYear = academicSetting?.academicYear?.trim() || '';
-  const semester: 1 | 2 = academicSetting?.semester?.startsWith('2') ? 2 : 1;
+  const semester: 1 | 2 | undefined = academicSetting?.semester?.startsWith('1')
+    ? 1
+    : academicSetting?.semester?.startsWith('2')
+    ? 2
+    : undefined;
 
   const rawLevel = (academicSetting?.level?.trim() || '') as 'SD' | 'SMP' | 'SMA' | 'SMK';
   const rawGrade = (academicSetting?.grade || '').trim();
@@ -93,8 +93,10 @@ export function buildAdministrationContext(data: {
   const gradeNum = gradeMatch ? parseInt(gradeMatch[0], 10) : 0;
 
   // Check validity of mandatory fields
+  const isCurriculumMissing = !curriculumType;
   const isSchoolMissing = !schoolId;
   const isAcademicYearMissing = !academicYear;
+  const isSemesterMissing = semester === undefined;
   const isSubjectMissing = !rawSubject;
   const isGradeMissing = !rawGrade || gradeNum < 1 || gradeNum > 12;
   const isLevelMissing = !rawLevel;
@@ -107,10 +109,14 @@ export function buildAdministrationContext(data: {
   let subjectName = rawSubject;
   let phase: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | undefined = undefined;
 
-  if (isSchoolMissing) {
+  if (isCurriculumMissing) {
+    unresolvedReason = 'Kurikulum belum ditentukan atau tidak dikenali.';
+  } else if (isSchoolMissing) {
     unresolvedReason = 'Data satuan pendidikan (sekolah) belum dipilih atau belum lengkap.';
   } else if (isAcademicYearMissing) {
     unresolvedReason = 'Tahun ajaran belum diisi.';
+  } else if (isSemesterMissing) {
+    unresolvedReason = 'Semester belum dipilih.';
   } else if (isLevelMissing) {
     unresolvedReason = 'Jenjang pendidikan (SD/SMP/SMA) belum dipilih.';
   } else if (isSMKUnsupported) {

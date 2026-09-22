@@ -17,18 +17,18 @@ export function getCurriculumTypeFromSetting(
   setting?: AcademicSetting | { curriculum?: string; curriculumType?: CurriculumType } | null
 ): CurriculumType | undefined {
   if (!setting) return undefined;
-  if (setting.curriculumType === 'K13' || setting.curriculumType === 'KURIKULUM_MERDEKA') {
-    return setting.curriculumType;
-  }
-  if (!setting.curriculum || !setting.curriculum.trim()) {
+  if (setting.curriculum && setting.curriculum.trim()) {
+    const curr = setting.curriculum.toLowerCase();
+    if (curr.includes('k13') || curr.includes('2013') || curr.includes('k-13')) {
+      return 'K13';
+    }
+    if (curr.includes('merdeka')) {
+      return 'KURIKULUM_MERDEKA';
+    }
     return undefined;
   }
-  const curr = setting.curriculum.toLowerCase();
-  if (curr.includes('k13') || curr.includes('2013') || curr.includes('k-13')) {
-    return 'K13';
-  }
-  if (curr.includes('merdeka')) {
-    return 'KURIKULUM_MERDEKA';
+  if (setting.curriculumType === 'K13' || setting.curriculumType === 'KURIKULUM_MERDEKA') {
+    return setting.curriculumType;
   }
   return undefined;
 }

@@ -62,8 +62,8 @@ import { ATPManager } from './components/ATPManager';
 import { K13Manager } from './components/administration/K13Manager';
 import { AdministrationHub } from './components/administration/AdministrationHub';
 import { BackupModal } from './components/BackupModal';
-import { isK13 } from './services/curriculumRouter';
-import { Plus, Copy, Trash2, X, FolderPlus } from 'lucide-react';
+import { isK13, getCurriculumTypeFromSetting } from './services/curriculumRouter';
+import { Plus, Copy, Trash2, X, FolderPlus, AlertCircle } from 'lucide-react';
 import { GRADE_PHASE_MAP, SUBJECT_OPTIONS } from './data/curriculumDefaults';
 import { APP_BUILD_ID } from './config/buildInfo';
 
@@ -87,6 +87,7 @@ export function App() {
   const [currentStep, setCurrentStep] = useState<WorkflowStepId>('profile');
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isNewWorkspaceModalOpen, setIsNewWorkspaceModalOpen] = useState(false);
+  const [appNotice, setAppNotice] = useState<{ type: 'error' | 'warning' | 'info'; message: string } | null>(null);
 
   // New Workspace form state
   const [newWsGrade, setNewWsGrade] = useState('');
@@ -147,6 +148,13 @@ export function App() {
     : [];
 
   const openNewWorkspaceModal = () => {
+    if (!activeProfile) {
+      setAppNotice({
+        type: 'warning',
+        message: 'Buat atau pilih profil guru terlebih dahulu sebelum membuat Administrasi.',
+      });
+      return;
+    }
     setNewWsSubject(activeProfile?.defaultSubject || '');
     setNewWsGrade('');
     setNewWsSemester(activeAcademicSetting?.semester || '');
@@ -199,12 +207,25 @@ export function App() {
 
   const handleCreateNewWorkspace = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!activeProfile) {
+      setAppNotice({
+        type: 'error',
+        message: 'Profil guru tidak ditemukan. Buat profil terlebih dahulu.',
+      });
+      return;
+    }
     if (!newWsSubject.trim()) {
-      alert('Mata pelajaran tidak boleh kosong.');
+      setAppNotice({
+        type: 'warning',
+        message: 'Mata pelajaran tidak boleh kosong.',
+      });
       return;
     }
     if (newWsYear.trim() && !/^\d{4}\/\d{4}$/.test(newWsYear.trim())) {
-      alert('Tahun ajaran gunakan format 2026/2027 atau kosongkan jika belum ditentukan.');
+      setAppNotice({
+        type: 'warning',
+        message: 'Tahun ajaran gunakan format 2026/2027 atau kosongkan jika belum ditentukan.',
+      });
       return;
     }
 
@@ -226,9 +247,12 @@ export function App() {
   };
 
   // Handlers for Academic Setting & Documents
-  const handleSaveAcademicSetting = (setting: AcademicSetting, customWorkspaceName?: string) => {
-    saveAcademicSetting(setting, customWorkspaceName);
-    refreshData();
+  const handleSaveAcademicSetting = (setting: AcademicSetting, customWorkspaceName?: string): boolean => {
+    const saved = saveAcademicSetting(setting, customWorkspaceName);
+    if (saved) {
+      refreshData();
+    }
+    return saved;
   };
 
   const handleSaveCP = (cp: CPData) => {
@@ -354,6 +378,32 @@ export function App() {
 
       {/* Main Workspace Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {/* App Notification Banner */}
+        {appNotice && (
+          <div
+            id="app-notification-banner"
+            className={`p-4 rounded-xl border flex items-center justify-between shadow-xs animate-fade-in ${
+              appNotice.type === 'error'
+                ? 'bg-rose-50 border-rose-200 text-rose-800'
+                : appNotice.type === 'warning'
+                ? 'bg-amber-50 border-amber-200 text-amber-900'
+                : 'bg-blue-50 border-blue-200 text-blue-900'
+            }`}
+          >
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <span>{appNotice.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAppNotice(null)}
+              className="text-xs font-semibold px-2.5 py-1 rounded-md hover:bg-black/5 cursor-pointer"
+            >
+              Tutup
+            </button>
+          </div>
+        )}
+
         {/* Workflow Stepper & Context Banner */}
         <WorkflowStepper
           currentStep={currentStep}
@@ -399,7 +449,19 @@ export function App() {
               profile={activeProfile}
               workspace={activeWorkspace}
               onSaveSetting={handleSaveAcademicSetting}
-              onNextStep={() => setCurrentStep(isK13(activeAcademicSetting) ? 'k13-kd' : 'cp')}
+              onNextStep={() => {
+                const curType = getCurriculumTypeFromSetting(activeAcademicSetting);
+                if (curType === 'K13') {
+                  setCurrentStep('k13-kd');
+                } else if (curType === 'KURIKULUM_MERDEKA') {
+                  setCurrentStep('cp');
+                } else {
+                  setAppNotice({
+                    type: 'warning',
+                    message: 'Pilih dan simpan Kurikulum yang valid (Kurikulum Merdeka atau Kurikulum 2013) sebelum melanjutkan.',
+                  });
+                }
+              }}
             />
           )}
 

@@ -78,6 +78,7 @@ const mockAtpData: ATPData = {
   academicSettingId: 'setting-1',
   updatedAt: new Date().toISOString(),
   totalJP: 36,
+  workflowStatus: 'SIAP',
   items: [
     {
       id: 'atp-201',
@@ -337,7 +338,7 @@ runTest('Recovery A.2 Test 17-18: unknown curriculum does not become Merdeka and
   assert.strictEqual(getCurriculumTypeFromSetting({ ...mockSetting, curriculum: 'Kurikulum Eksperimental', curriculumType: undefined }), undefined);
   const source = fs.readFileSync('src/components/administration/LearningPlanManager.tsx', 'utf-8');
   assert.ok(source.includes("curriculumType === 'K13'"));
-  assert.ok(source.includes('Draf AI Modul Ajar/RPP K13 belum didukung'));
+  assert.ok(source.includes('Penyusunan RPP K13 pada modul Perencanaan Pembelajaran ini belum didukung'));
   assert.ok(source.includes("curriculumType !== 'KURIKULUM_MERDEKA'"));
 });
 

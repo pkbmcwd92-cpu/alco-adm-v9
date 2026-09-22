@@ -69,9 +69,9 @@ export const MASTER_CURRICULUM_STRUCTURE: CurriculumStructureRule[] = ALL_CURRIC
 /**
  * Normalisasi string teks untuk perbandingan fuzzy yang aman
  */
-function normalizeText(text?: string): string {
-  if (!text) return '';
-  return text
+function normalizeText(text?: any): string {
+  if (text === null || text === undefined) return '';
+  return String(text)
     .toLowerCase()
     .replace(/[(),.\-_/]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -94,8 +94,8 @@ export function getSubjectJP(query: SubjectJPQuery): SubjectJPResult {
 
   if (!resolvedCurriculumType) {
     return {
-      weeklyJP: undefined,
-      intrakurikulerWeeklyJP: undefined,
+      weeklyJP: null,
+      intrakurikulerWeeklyJP: null,
       intrakurikulerAnnualJP: undefined,
       kokurikulerAnnualJP: undefined,
       totalAnnualJP: undefined,
@@ -112,8 +112,8 @@ export function getSubjectJP(query: SubjectJPQuery): SubjectJPResult {
     };
   }
 
-  // Parse nomor kelas jika tersedia (e.g. "Kelas 4" -> 4, "4" -> 4)
-  const gradeNum = parseInt((query.grade || '').replace(/[^0-9]/g, ''), 10);
+  // Parse nomor kelas jika tersedia (e.g. "Kelas 4" -> 4, "4" -> 4, 4 -> 4)
+  const gradeNum = parseInt(String(query.grade || '').replace(/[^0-9]/g, ''), 10);
 
   // 1. Delegasi ke Central Resolver jika nomor kelas terdeteksi
   if (!isNaN(gradeNum) && gradeNum > 0 && query.subject) {

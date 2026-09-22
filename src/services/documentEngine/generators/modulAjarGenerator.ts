@@ -20,7 +20,7 @@ import {
 } from '../docxStyles';
 import { LearningPlan } from '../../../types';
 import { validateLearningPlan, createEmptyLearningPlan } from '../../learningPlanService';
-import { getCurriculumTypeFromSetting } from '../../curriculumRouter';
+import { getCurriculumTypeFromSetting, isMerdeka } from '../../curriculumRouter';
 import { resolveCanonicalLearningPlan } from '../index';
 
 /**
@@ -38,13 +38,20 @@ export async function generateModulAjar(context: DocumentGenerationContext): Pro
   // 1. Resolve canonical LearningPlan
   let plan: LearningPlan | undefined = undefined;
   if (context.documentMode === 'blank') {
-    plan = createEmptyLearningPlan({
-      academicSetting,
-      curriculumType: getCurriculumTypeFromSetting(academicSetting),
-      tpIds: [],
-      atpItemIds: [],
-      context: { tp, atp },
-    });
+    const candidate =
+      (context.learningPlans || []).find((p) => p.id === context.activeLearningPlanId) ||
+      (context.learningPlans && context.learningPlans.length > 0 ? context.learningPlans[0] : undefined);
+    if (candidate) {
+      plan = candidate;
+    } else {
+      plan = createEmptyLearningPlan({
+        academicSetting,
+        curriculumType: getCurriculumTypeFromSetting(academicSetting),
+        tpIds: [],
+        atpItemIds: [],
+        context: { tp, atp },
+      });
+    }
   } else {
     const resolved = resolveCanonicalLearningPlan(context);
     if (resolved.error || !resolved.plan) {
@@ -213,7 +220,8 @@ export async function generateModulAjar(context: DocumentGenerationContext): Pro
   const coreSteps = plan.learningSteps?.core || [];
   const closingSteps = plan.learningSteps?.closing || [];
 
-  if (experiences.length > 0) {
+  const isMerdekaCurriculum = isMerdeka(academicSetting);
+  if (experiences.length > 0 || (isBlankMode && isMerdekaCurriculum)) {
     addSectionTitle('III. PENGALAMAN BELAJAR');
 
     const formatExpGroup = (phase: 'UNDERSTAND' | 'APPLY' | 'REFLECT', label: string) => {

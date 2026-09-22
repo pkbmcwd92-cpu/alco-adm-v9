@@ -57,11 +57,12 @@ export const GRADE_PHASE_MAP: Record<string, { grade: string; phase: string; lev
  * Centrally derived Phase from Education Level and Grade.
  * Phase cannot be freely edited.
  */
-export function getPhaseFromGrade(level: string = 'SD', grade: string = ''): string {
-  if (!grade || !grade.trim()) return '';
+export function getPhaseFromGrade(level: string = '', grade: string = ''): string {
+  if (!level || !level.trim() || !grade || !grade.trim()) return '';
   const normLevel = (level.toUpperCase() in GRADE_PHASE_MAP ? level.toUpperCase() : '') as keyof typeof GRADE_PHASE_MAP | '';
   if (!normLevel) return '';
-  const grades = GRADE_PHASE_MAP[normLevel] || GRADE_PHASE_MAP.SD;
+  const grades = GRADE_PHASE_MAP[normLevel];
+  if (!grades) return '';
   
   // Direct match
   const matched = grades.find((g) => g.grade.toLowerCase() === grade.toLowerCase());

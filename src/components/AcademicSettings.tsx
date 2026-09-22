@@ -30,52 +30,45 @@ import {
 } from '../data/curriculumDefaults';
 import { getSubjectJP } from '../services/jpEngine';
 import { lookupOfficialWeeklyJP } from '../services/curriculumRules';
-import { isK13, getCurriculumTypeFromSetting } from '../services/curriculumRouter';
+import { isK13, isMerdeka, getCurriculumTypeFromSetting } from '../services/curriculumRouter';
 import { TeacherTeachingLoadModal } from './TeacherTeachingLoadModal';
 
 interface AcademicSettingsProps {
   setting?: AcademicSetting | null;
   profile?: TeacherProfile | null;
   workspace?: AdministrationWorkspace | null;
-  onSaveSetting: (setting: AcademicSetting, customWorkspaceName?: string) => void;
+  onSaveSetting: (setting: AcademicSetting, customWorkspaceName?: string) => boolean | Promise<boolean>;
   onNextStep: () => void;
 }
 
-export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
+interface AcademicSettingsFormProps {
+  setting: AcademicSetting;
+  profile?: TeacherProfile | null;
+  workspace?: AdministrationWorkspace | null;
+  onSaveSetting: (setting: AcademicSetting, customWorkspaceName?: string) => boolean | Promise<boolean>;
+  onNextStep: () => void;
+}
+
+/**
+ * Pure Form Component - Hooks execute unconditionally here
+ */
+const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
   setting,
   profile,
   workspace,
   onSaveSetting,
   onNextStep,
 }) => {
-  if (!setting) {
-    return (
-      <div className="max-w-2xl mx-auto py-12 px-4">
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-8 text-center space-y-4 shadow-xs">
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200">
-            <AlertCircle className="w-6 h-6" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-base font-bold text-slate-800">
-              Administrasi pembelajaran belum dibuat.
-            </h3>
-            <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
-              Buat atau pilih Workspace Administrasi terlebih dahulu sebelum mengisi Data Pembelajaran.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const initialPhase = getPhaseFromGrade(setting.level || 'SD', setting.grade || 'Kelas 1');
+  const initialPhase = getPhaseFromGrade(setting.level, setting.grade);
   const [formData, setFormData] = useState<AcademicSetting>({
     ...setting,
     phase: initialPhase,
+    totalHoursPerWeek: setting.totalHoursPerWeek ?? null,
   });
   const [workspaceName, setWorkspaceName] = useState<string>(workspace?.name || '');
   const [isCustomSubject, setIsCustomSubject] = useState(false);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
   const [showTeachingLoadModal, setShowTeachingLoadModal] = useState(false);
 
@@ -83,21 +76,22 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
   const officialJpInfo = useMemo(() => {
     return getSubjectJP({
       curriculum: formData.curriculum,
-      level: formData.level || 'SD',
-      grade: formData.grade || 'Kelas 1',
-      subject: formData.subject || 'Bahasa Indonesia',
+      level: formData.level,
+      grade: formData.grade,
+      subject: formData.subject,
     });
   }, [formData.curriculum, formData.level, formData.grade, formData.subject]);
 
   // Sync state if prop changes (e.g. on workspace or profile switch)
   useEffect(() => {
-    const derivedPhase = getPhaseFromGrade(setting.level || 'SD', setting.grade || 'Kelas 1');
+    const derivedPhase = getPhaseFromGrade(setting.level, setting.grade);
     setFormData({
       ...setting,
       phase: derivedPhase,
+      totalHoursPerWeek: setting.totalHoursPerWeek ?? null,
     });
     setWorkspaceName(workspace?.name || '');
-    const currentSubjectList = SUBJECT_OPTIONS[setting.level || 'SD'] || [];
+    const currentSubjectList = SUBJECT_OPTIONS[setting.level] || [];
     if (setting.subject && !currentSubjectList.includes(setting.subject)) {
       setIsCustomSubject(true);
     } else {
@@ -107,46 +101,51 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
 
   // Dirty State Calculation: Check if form data or workspace name differs from saved setting
   const isDirty = useMemo(() => {
-    const derivedPhase = getPhaseFromGrade(formData.level || 'SD', formData.grade || 'Kelas 1');
+    const derivedPhase = getPhaseFromGrade(formData.level, formData.grade);
     const isSettingChanged =
-      formData.curriculum !== setting.curriculum ||
-      formData.academicYear !== setting.academicYear ||
-      formData.semester !== setting.semester ||
-      formData.level !== setting.level ||
-      formData.grade !== setting.grade ||
-      formData.subject !== setting.subject ||
-      formData.totalHoursPerWeek !== setting.totalHoursPerWeek ||
-      formData.phase !== derivedPhase;
+      (formData.curriculum || '') !== (setting.curriculum || '') ||
+      (formData.academicYear || '') !== (setting.academicYear || '') ||
+      (formData.semester || '') !== (setting.semester || '') ||
+      (formData.level || '') !== (setting.level || '') ||
+      (formData.grade || '') !== (setting.grade || '') ||
+      (formData.subject || '') !== (setting.subject || '') ||
+      formData.totalHoursPerWeek !== (setting.totalHoursPerWeek ?? null) ||
+      (formData.phase || '') !== (derivedPhase || '');
 
-    const isNameChanged = workspace ? workspaceName.trim() !== workspace.name.trim() : false;
+    const isNameChanged = workspace ? workspaceName.trim() !== (workspace.name || '').trim() : false;
 
     return isSettingChanged || isNameChanged;
   }, [formData, setting, workspace, workspaceName]);
 
-  // Handle Level Change (automatically recalculates grade, derived phase, and default subject)
-  const handleLevelChange = (level: 'SD' | 'SMP' | 'SMA' | 'SMK') => {
-    const defaultGradeInfo = GRADE_PHASE_MAP[level]?.[0] || { grade: 'Kelas 1', phase: 'Fase A', level };
-    const derivedPhase = getPhaseFromGrade(level, defaultGradeInfo.grade);
-    const defaultSubject = SUBJECT_OPTIONS[level]?.[0] || 'Bahasa Indonesia';
-    const jpLookup = lookupOfficialWeeklyJP(formData.curriculum, level, defaultGradeInfo.grade, defaultSubject);
+  // Handle Level Change (clean reset without fabricated guessing)
+  const handleLevelChange = (level: string) => {
+    const availableGrades = GRADE_PHASE_MAP[level] || [];
+    const validGrade = availableGrades.some((g) => g.grade === formData.grade) ? formData.grade : '';
+    const derivedPhase = getPhaseFromGrade(level, validGrade);
+
+    const currentSubjectList = SUBJECT_OPTIONS[level] || [];
+    const validSubject = isCustomSubject
+      ? formData.subject
+      : (currentSubjectList.includes(formData.subject) ? formData.subject : '');
+
+    const jpLookup = lookupOfficialWeeklyJP(formData.curriculum, level, validGrade, validSubject);
 
     setFormData((prev) => ({
       ...prev,
-      level,
-      grade: defaultGradeInfo.grade,
+      level: level as any,
+      grade: validGrade,
       phase: derivedPhase,
-      subject: defaultSubject,
-      totalHoursPerWeek: jpLookup.weeklyJP,
+      subject: validSubject,
+      totalHoursPerWeek: prev.isHoursOverridden ? prev.totalHoursPerWeek : jpLookup.weeklyJP,
       regulationReference: jpLookup.regulationReference,
-      isHoursOverridden: !jpLookup.isOfficial,
+      isHoursOverridden: !jpLookup.isOfficial && prev.totalHoursPerWeek !== null,
     }));
-    setIsCustomSubject(false);
   };
 
   // Handle Grade Change (strictly auto-derives Phase & official JP)
   const handleGradeChange = (grade: string) => {
-    const derivedPhase = getPhaseFromGrade(formData.level || 'SD', grade);
-    const jpLookup = lookupOfficialWeeklyJP(formData.curriculum, formData.level || 'SD', grade, formData.subject);
+    const derivedPhase = getPhaseFromGrade(formData.level, grade);
+    const jpLookup = lookupOfficialWeeklyJP(formData.curriculum, formData.level, grade, formData.subject);
     setFormData((prev) => ({
       ...prev,
       grade,
@@ -158,7 +157,7 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
 
   // Handle Subject Change
   const handleSubjectChange = (subject: string) => {
-    const jpLookup = lookupOfficialWeeklyJP(formData.curriculum, formData.level || 'SD', formData.grade || 'Kelas 1', subject);
+    const jpLookup = lookupOfficialWeeklyJP(formData.curriculum, formData.level, formData.grade, subject);
     setFormData((prev) => ({
       ...prev,
       subject,
@@ -177,22 +176,24 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
   };
 
   const handleResetChanges = () => {
-    const derivedPhase = getPhaseFromGrade(setting.level || 'SD', setting.grade || 'Kelas 1');
+    const derivedPhase = getPhaseFromGrade(setting.level, setting.grade);
     setFormData({
       ...setting,
       phase: derivedPhase,
+      totalHoursPerWeek: setting.totalHoursPerWeek ?? null,
     });
     setWorkspaceName(workspace?.name || '');
+    setErrorMessage(null);
   };
 
   const handleSave = (e?: React.FormEvent): boolean => {
     if (e) e.preventDefault();
     if (!formData.subject || !formData.subject.trim()) {
-      alert('Mata pelajaran tidak boleh kosong.');
+      setErrorMessage('Mata pelajaran tidak boleh kosong.');
       return false;
     }
 
-    const derivedPhase = getPhaseFromGrade(formData.level || 'SD', formData.grade || 'Kelas 1');
+    const derivedPhase = getPhaseFromGrade(formData.level, formData.grade);
     const resolvedCurriculumType = getCurriculumTypeFromSetting({
       curriculum: formData.curriculum,
       curriculumType: formData.curriculumType,
@@ -204,7 +205,14 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
       curriculumType: resolvedCurriculumType,
       updatedAt: new Date().toISOString(),
     };
-    onSaveSetting(updated, workspaceName.trim() || undefined);
+
+    const saved = onSaveSetting(updated, workspaceName.trim() || undefined);
+    if (!saved) {
+      setErrorMessage('Gagal menyimpan pengaturan: Workspace tidak valid atau terjadi kesalahan.');
+      return false;
+    }
+
+    setErrorMessage(null);
     setSaveSuccessNotice(true);
     setShowUnsavedPrompt(false);
     setTimeout(() => setSaveSuccessNotice(false), 2500);
@@ -227,8 +235,8 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
     }
   };
 
-  const availableGrades = GRADE_PHASE_MAP[formData.level || 'SD'] || [];
-  const standardSubjects = SUBJECT_OPTIONS[formData.level || 'SD'] || [];
+  const availableGrades = GRADE_PHASE_MAP[formData.level] || [];
+  const standardSubjects = SUBJECT_OPTIONS[formData.level] || [];
 
   return (
     <div className="space-y-6">
@@ -282,6 +290,23 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
         )}
       </div>
 
+      {/* Error Message Notice */}
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-xl text-sm flex items-center justify-between gap-3 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setErrorMessage(null)}
+            className="text-xs text-rose-600 hover:text-rose-900 font-semibold cursor-pointer"
+          >
+            Tutup
+          </button>
+        </div>
+      )}
+
       {/* Main Settings Form */}
       <form onSubmit={handleSaveAndContinue} className="space-y-6">
         <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs space-y-6">
@@ -315,10 +340,10 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
               </label>
               <select
                 id="select-curriculum"
-                value={formData.curriculum}
+                value={formData.curriculum || ''}
                 onChange={(e) => {
                   const newCur = e.target.value;
-                  const jp = lookupOfficialWeeklyJP(newCur, formData.level || 'SD', formData.grade || 'Kelas 1', formData.subject || 'Bahasa Indonesia');
+                  const jp = lookupOfficialWeeklyJP(newCur, formData.level, formData.grade, formData.subject);
                   setFormData({
                     ...formData,
                     curriculum: newCur,
@@ -329,6 +354,7 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
                 }}
                 className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-600 bg-white cursor-pointer"
               >
+                <option value="">— Pilih Kurikulum —</option>
                 {CURRICULA.map((cur) => (
                   <option key={cur} value={cur}>
                     {cur}
@@ -344,10 +370,11 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
               </label>
               <select
                 id="select-academic-year"
-                value={formData.academicYear}
+                value={formData.academicYear || ''}
                 onChange={(e) => setFormData({ ...formData, academicYear: e.target.value })}
                 className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-600 bg-white cursor-pointer"
               >
+                <option value="">— Pilih Tahun Ajaran —</option>
                 {ACADEMIC_YEARS.map((yr) => (
                   <option key={yr} value={yr}>
                     {yr}
@@ -363,15 +390,16 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
               </label>
               <select
                 id="select-semester"
-                value={formData.semester}
+                value={formData.semester || ''}
                 onChange={(e) =>
                   setFormData({
                     ...formData,
-                    semester: e.target.value as '1 (Ganjil)' | '2 (Genap)',
+                    semester: (e.target.value || undefined) as any,
                   })
                 }
                 className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-600 bg-white cursor-pointer"
               >
+                <option value="">— Pilih Semester —</option>
                 {SEMESTERS.map((sem) => (
                   <option key={sem} value={sem}>
                     {sem}
@@ -390,10 +418,11 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
               </label>
               <select
                 id="select-academic-level"
-                value={formData.level}
-                onChange={(e) => handleLevelChange(e.target.value as 'SD' | 'SMP' | 'SMA' | 'SMK')}
+                value={formData.level || ''}
+                onChange={(e) => handleLevelChange(e.target.value)}
                 className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-600 bg-white cursor-pointer"
               >
+                <option value="">— Pilih Jenjang —</option>
                 {EDUCATION_LEVELS.map((lvl) => (
                   <option key={lvl} value={lvl}>
                     {lvl}
@@ -409,10 +438,11 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
               </label>
               <select
                 id="select-grade"
-                value={formData.grade}
+                value={formData.grade || ''}
                 onChange={(e) => handleGradeChange(e.target.value)}
                 className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-600 bg-white cursor-pointer"
               >
+                <option value="">— Pilih Tingkat / Kelas —</option>
                 {availableGrades.map((g) => (
                   <option key={g.grade} value={g.grade}>
                     {g.grade}
@@ -442,7 +472,7 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
                   <Info className="w-3 h-3 text-slate-400 shrink-0" />
-                  <span>K13 menggunakan tingkatan Kelas ({formData.grade}) tanpa sistem Fase.</span>
+                  <span>K13 menggunakan tingkatan Kelas ({formData.grade || '—'}) tanpa sistem Fase.</span>
                 </p>
               </div>
             ) : (
@@ -453,19 +483,29 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
                 </label>
                 <div
                   id="display-derived-phase"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-blue-200 bg-blue-50/70 text-blue-950 font-bold text-sm flex items-center justify-between"
+                  className={`w-full px-3.5 py-2.5 rounded-xl border font-bold text-sm flex items-center justify-between ${
+                    formData.phase
+                      ? 'border-blue-200 bg-blue-50/70 text-blue-950'
+                      : 'border-slate-200 bg-slate-50 text-slate-400'
+                  }`}
                 >
                   <span className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-                    {formData.phase}
+                    <span className={`w-2 h-2 rounded-full ${formData.phase ? 'bg-blue-600' : 'bg-slate-300'}`}></span>
+                    {formData.phase || '— (Belum Ditentukan)'}
                   </span>
-                  <span className="text-[11px] font-semibold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md">
-                    Derived
-                  </span>
+                  {formData.phase && (
+                    <span className="text-[11px] font-semibold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md">
+                      Derived
+                    </span>
+                  )}
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
                   <Info className="w-3 h-3 text-slate-400 shrink-0" />
-                  <span>{formData.level} {formData.grade} → {formData.phase}</span>
+                  <span>
+                    {formData.level && formData.grade
+                      ? `${formData.level} ${formData.grade} → ${formData.phase || '—'}`
+                      : 'Pilih Jenjang dan Kelas untuk menentukan Fase'}
+                  </span>
                 </p>
               </div>
             )}
@@ -494,17 +534,18 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
                   type="text"
                   required
                   placeholder="Ketik nama mata pelajaran kustom / muatan lokal..."
-                  value={formData.subject}
+                  value={formData.subject || ''}
                   onChange={(e) => handleSubjectChange(e.target.value)}
                   className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-600 bg-white"
                 />
               ) : (
                 <select
                   id="select-subject"
-                  value={formData.subject}
+                  value={formData.subject || ''}
                   onChange={(e) => handleSubjectChange(e.target.value)}
                   className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-600 bg-white cursor-pointer"
                 >
+                  <option value="">— Pilih Mata Pelajaran —</option>
                   {standardSubjects.map((sub) => (
                     <option key={sub} value={sub}>
                       {sub}
@@ -521,15 +562,17 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
                   <span>JP Mapel / Pekan</span>
                 </label>
                 <div className="flex items-center gap-2">
-                  {formData.totalHoursPerWeek !== officialJpInfo.weeklyJP && officialJpInfo.isOfficial && (
-                    <button
-                      type="button"
-                      onClick={handleApplyOfficialJP}
-                      className="text-[11px] text-blue-600 hover:text-blue-800 underline font-medium"
-                    >
-                      Gunakan JP Resmi ({officialJpInfo.weeklyJP} JP)
-                    </button>
-                  )}
+                  {officialJpInfo.isOfficial &&
+                    officialJpInfo.weeklyJP !== null &&
+                    formData.totalHoursPerWeek !== officialJpInfo.weeklyJP && (
+                      <button
+                        type="button"
+                        onClick={handleApplyOfficialJP}
+                        className="text-[11px] text-blue-600 hover:text-blue-800 underline font-medium"
+                      >
+                        Gunakan JP Resmi ({officialJpInfo.weeklyJP} JP)
+                      </button>
+                    )}
                   <button
                     type="button"
                     onClick={() => setShowTeachingLoadModal(true)}
@@ -546,14 +589,20 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
                   id="input-hours-per-week"
                   type="number"
                   min="1"
-                  max="20"
-                  value={formData.totalHoursPerWeek || 4}
+                  max="40"
+                  placeholder="—"
+                  value={
+                    formData.totalHoursPerWeek !== null && formData.totalHoursPerWeek !== undefined
+                      ? formData.totalHoursPerWeek
+                      : ''
+                  }
                   onChange={(e) => {
-                    const val = parseInt(e.target.value, 10) || 4;
+                    const val = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                    const validVal = val === null || isNaN(val) ? null : val;
                     setFormData({
                       ...formData,
-                      totalHoursPerWeek: val,
-                      isHoursOverridden: val !== officialJpInfo.weeklyJP,
+                      totalHoursPerWeek: validVal,
+                      isHoursOverridden: validVal !== officialJpInfo.weeklyJP,
                     });
                   }}
                   className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
@@ -567,20 +616,26 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
                   <div className="text-emerald-700 font-medium flex items-center gap-1">
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>
-                      {officialJpInfo.statusLabel} ({officialJpInfo.regulation}) &bull; {officialJpInfo.annualJP ? `${officialJpInfo.annualJP} JP/tahun` : ''}
+                      {officialJpInfo.statusLabel} ({officialJpInfo.regulation}) &bull;{' '}
+                      {officialJpInfo.annualJP ? `${officialJpInfo.annualJP} JP/tahun` : ''}
                     </span>
                   </div>
-                ) : officialJpInfo.isOfficial ? (
+                ) : officialJpInfo.isOfficial && officialJpInfo.weeklyJP !== null ? (
                   <div className="text-amber-700 font-medium flex items-center gap-1">
                     <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                     <span>
-                      Penyesuaian Manual (Standar Resmi: {officialJpInfo.weeklyJP} JP/minggu &bull; {officialJpInfo.regulation})
+                      Penyesuaian Manual (Standar Resmi: {officialJpInfo.weeklyJP} JP/minggu &bull;{' '}
+                      {officialJpInfo.regulation})
                     </span>
                   </div>
                 ) : (
                   <div className="text-slate-500 flex items-center gap-1">
                     <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span>Mapel kustom &bull; Status: Belum diverifikasi dalam regulasi nasional</span>
+                    <span>
+                      {formData.subject
+                        ? 'Status: Belum diverifikasi dalam regulasi nasional'
+                        : 'Pilih mapel untuk melihat alokasi JP resmi'}
+                    </span>
                   </div>
                 )}
                 <div className="text-[10px] text-slate-400">
@@ -634,9 +689,11 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
               className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-all cursor-pointer"
             >
               <span>
-                {formData.curriculum === 'Kurikulum 2013'
+                {isK13(formData)
                   ? 'Lanjut ke SKL / KI / KD (K13)'
-                  : 'Lanjut ke Capaian Pembelajaran (CP)'}
+                  : isMerdeka(formData)
+                  ? 'Lanjut ke Capaian Pembelajaran (CP)'
+                  : 'Lanjut ke Kurikulum'}
               </span>
               <ArrowRight className="w-4 h-4" />
             </button>
@@ -676,6 +733,7 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
                 onClick={() => {
                   const saved = handleSave();
                   if (saved) {
+                    setShowUnsavedPrompt(false);
                     onNextStep();
                   }
                 }}
@@ -696,5 +754,48 @@ export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
         teacherProfile={profile}
       />
     </div>
+  );
+};
+
+/**
+ * AcademicSettings Container Component:
+ * Guarantees Rules of Hooks integrity by rendering AcademicSettingsForm
+ * ONLY when setting is defined and valid.
+ */
+export const AcademicSettings: React.FC<AcademicSettingsProps> = ({
+  setting,
+  profile,
+  workspace,
+  onSaveSetting,
+  onNextStep,
+}) => {
+  if (!setting) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 px-4">
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-8 text-center space-y-4 shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-slate-800">
+              Administrasi pembelajaran belum dibuat.
+            </h3>
+            <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
+              Buat atau pilih Workspace Administrasi terlebih dahulu sebelum mengisi Data Pembelajaran.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <AcademicSettingsForm
+      setting={setting}
+      profile={profile}
+      workspace={workspace}
+      onSaveSetting={onSaveSetting}
+      onNextStep={onNextStep}
+    />
   );
 };

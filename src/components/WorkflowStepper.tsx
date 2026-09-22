@@ -30,7 +30,7 @@ import {
   K13Analysis,
   K13KKM,
 } from '../types';
-import { isK13 } from '../services/curriculumRouter';
+import { isK13, getCurriculumTypeFromSetting } from '../services/curriculumRouter';
 import { validateWorkflowDependencies, WorkflowStatus } from '../services/workflowEngine';
 
 interface WorkflowStepperProps {
@@ -62,7 +62,9 @@ export const WorkflowStepper: React.FC<WorkflowStepperProps> = ({
   k13Analysis,
   k13KKM,
 }) => {
-  const isK13Active = isK13(academicSetting);
+  const curType = getCurriculumTypeFromSetting(academicSetting);
+  const isK13Active = curType === 'K13';
+  const isMerdekaActive = curType === 'KURIKULUM_MERDEKA';
 
   // Validate workflow dependencies centrally
   const validationReport = validateWorkflowDependencies({
@@ -165,7 +167,8 @@ export const WorkflowStepper: React.FC<WorkflowStepperProps> = ({
           lockReason: stepStates.admin.reason,
         },
       ]
-    : [
+    : isMerdekaActive
+    ? [
         {
           id: 'profile',
           num: '01',
@@ -247,6 +250,30 @@ export const WorkflowStepper: React.FC<WorkflowStepperProps> = ({
           isLocked: stepStates.admin.isBlocked,
           isStale: stepStates.admin.isStale,
           lockReason: stepStates.admin.reason,
+        },
+      ]
+    : [
+        {
+          id: 'profile',
+          num: '01',
+          title: 'PROFIL',
+          sub: 'Guru & Sekolah',
+          icon: <User className="w-4 h-4" />,
+          status: stepStates.profile.status,
+          isComplete: stepStates.profile.isComplete,
+          isLocked: stepStates.profile.isBlocked,
+          isStale: stepStates.profile.isStale,
+        },
+        {
+          id: 'academic',
+          num: '02',
+          title: 'DATA PEMBELAJARAN',
+          sub: 'Pilih Kurikulum & Kelas',
+          icon: <SlidersHorizontal className="w-4 h-4" />,
+          status: stepStates.academic.status,
+          isComplete: stepStates.academic.isComplete,
+          isLocked: stepStates.academic.isBlocked,
+          isStale: stepStates.academic.isStale,
         },
       ];
 
@@ -337,7 +364,7 @@ export const WorkflowStepper: React.FC<WorkflowStepperProps> = ({
 
       {/* Workflow Navigation Bar */}
       <nav aria-label="Alur Kerja Administrasi" className="bg-white rounded-2xl p-2 sm:p-3 border border-slate-200/80 shadow-xs">
-        <div className={`grid grid-cols-2 md:grid-cols-3 ${isK13Active ? 'lg:grid-cols-6' : 'lg:grid-cols-7'} gap-2`}>
+        <div className={`grid grid-cols-2 md:grid-cols-3 ${isK13Active ? 'lg:grid-cols-6' : isMerdekaActive ? 'lg:grid-cols-7' : 'lg:grid-cols-2'} gap-2`}>
           {steps.map((step) => {
             const isActive = currentStep === step.id;
 
