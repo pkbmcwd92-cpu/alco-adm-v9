@@ -272,13 +272,21 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
                 <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                 <span>Perubahan belum disimpan</span>
               </div>
-            ) : (
+            ) : validateAcademicSettingReadiness(setting).valid ? (
               <div
-                id="indicator-clean-state"
+                id="indicator-clean-ready-state"
                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200"
               >
                 <Check className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Pengaturan tersimpan</span>
+                <span>Pengaturan tersimpan & lengkap</span>
+              </div>
+            ) : (
+              <div
+                id="indicator-clean-incomplete-state"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-50/80 text-amber-800 border border-amber-200"
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                <span>Tersimpan, belum lengkap</span>
               </div>
             )}
           </div>

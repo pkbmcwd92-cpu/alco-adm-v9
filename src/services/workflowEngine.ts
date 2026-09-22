@@ -306,7 +306,13 @@ export function validateWorkflowDependencies(
     hasOrphans: false,
   };
 
-  if (curriculumType === 'K13') {
+  if (!isAcademicComplete) {
+    // RECOVERY U1.3: ACADEMIC INCOMPLETE = ALL DOWNSTREAM BLOCKED
+    // All downstream steps stay in their initial BLOCKED state:
+    // status: 'BLOCKED', isBlocked: true, isComplete: false.
+    // Existing downstream data (CP, TP, ATP, KD, etc.) in storage remains preserved,
+    // but is strictly blocked and cannot be considered complete for the current workflow.
+  } else if (curriculumType === 'K13') {
     // ==========================================
     // K13 WORKFLOW VALIDATION
     // ==========================================

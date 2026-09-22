@@ -1,5 +1,6 @@
 import { CurriculumType, AcademicSetting, WorkflowStepId, DocumentType } from '../types';
 import { getCurriculumType } from './jpEngine';
+import { GRADE_PHASE_MAP, getPhaseFromGrade } from '../data/curriculumDefaults';
 
 export interface WorkflowStepItem {
   id: WorkflowStepId;
@@ -60,13 +61,14 @@ export interface AcademicSettingReadinessResult {
 /**
  * Validates whether an AcademicSetting has all mandatory fields completed and resolved.
  * Must be resolved to either 'K13' or 'KURIKULUM_MERDEKA'. Unknown/unsupported are invalid.
- * Mandatory fields:
+ * Canonical validation rules:
  * - curriculum resolved (K13 or KURIKULUM_MERDEKA)
- * - academicYear non-empty
- * - semester non-empty / valid
- * - level non-empty
- * - grade non-empty
- * - subject non-empty
+ * - academicYear format YYYY/YYYY where secondYear === firstYear + 1
+ * - semester strictly '1 (Ganjil)' or '2 (Genap)'
+ * - level strictly supported canonical level: SD, SMP, SMA (SMK unsupported downstream)
+ * - grade compatible with level via GRADE_PHASE_MAP
+ * - phase for Kurikulum Merdeka derived and valid
+ * - subject non-empty trimmed
  */
 export function validateAcademicSettingReadiness(
   setting?: AcademicSetting | null
@@ -79,28 +81,76 @@ export function validateAcademicSettingReadiness(
     };
   }
 
+  // 1. Curriculum
   const curriculumType = getCurriculumTypeFromSetting(setting);
-  if (!curriculumType) {
+  if (!curriculumType || (curriculumType !== 'K13' && curriculumType !== 'KURIKULUM_MERDEKA')) {
     errors.push('Pilih kurikulum terlebih dahulu.');
   }
 
-  if (!setting.academicYear || !setting.academicYear.trim()) {
-    errors.push('Pilih tahun ajaran terlebih dahulu.');
+  // 2. Academic Year: format YYYY/YYYY with consecutive years (secondYear === firstYear + 1)
+  const rawAcademicYear = (setting.academicYear || '').trim();
+  const yearMatch = rawAcademicYear.match(/^(\d{4})\/(\d{4})$/);
+  if (!yearMatch) {
+    errors.push('Tahun ajaran harus menggunakan format YYYY/YYYY yang berurutan.');
+  } else {
+    const firstYear = parseInt(yearMatch[1], 10);
+    const secondYear = parseInt(yearMatch[2], 10);
+    if (secondYear !== firstYear + 1) {
+      errors.push('Tahun ajaran harus menggunakan format YYYY/YYYY yang berurutan.');
+    }
   }
 
-  if (!setting.semester || !setting.semester.trim()) {
-    errors.push('Pilih semester terlebih dahulu.');
+  // 3. Semester: exactly '1 (Ganjil)' or '2 (Genap)'
+  const rawSemester = (setting.semester || '').trim();
+  if (rawSemester !== '1 (Ganjil)' && rawSemester !== '2 (Genap)') {
+    errors.push('Pilih semester yang valid (1 (Ganjil) atau 2 (Genap)).');
   }
 
-  if (!setting.level || !setting.level.trim()) {
+  // 4. Level: canonical supported levels: SD, SMP, SMA (SMK is unsupported downstream)
+  const rawLevel = (setting.level || '').trim();
+  const canonicalLevels = ['SD', 'SMP', 'SMA'];
+  let isLevelValid = false;
+  if (!rawLevel) {
     errors.push('Pilih jenjang pendidikan terlebih dahulu.');
+  } else if (rawLevel === 'SMK') {
+    errors.push('Jenjang SMK saat ini belum didukung dalam resolusi kurikulum standar.');
+  } else if (!canonicalLevels.includes(rawLevel)) {
+    errors.push('Pilih jenjang pendidikan yang valid (SD, SMP, atau SMA).');
+  } else {
+    isLevelValid = true;
   }
 
-  if (!setting.grade || !setting.grade.trim()) {
+  // 5. Grade against Level
+  const rawGrade = (setting.grade || '').trim();
+  if (!rawGrade) {
     errors.push('Pilih tingkat/kelas terlebih dahulu.');
+  } else if (isLevelValid) {
+    const levelGrades = GRADE_PHASE_MAP[rawLevel];
+    const isGradeValidForLevel = levelGrades && levelGrades.some((g) => g.grade === rawGrade);
+    if (!isGradeValidForLevel) {
+      errors.push(`Tingkat/kelas '${rawGrade}' tidak valid untuk jenjang ${rawLevel}.`);
+    }
+  } else if (rawLevel === 'SMK') {
+    const levelGrades = GRADE_PHASE_MAP['SMK'];
+    const isGradeValidForLevel = levelGrades && levelGrades.some((g) => g.grade === rawGrade);
+    if (!isGradeValidForLevel) {
+      errors.push(`Tingkat/kelas '${rawGrade}' tidak valid untuk jenjang SMK.`);
+    }
+  } else {
+    errors.push(`Tingkat/kelas '${rawGrade}' tidak valid karena jenjang belum valid.`);
   }
 
-  if (!setting.subject || !setting.subject.trim()) {
+  // 6. Merdeka Phase validation
+  if (curriculumType === 'KURIKULUM_MERDEKA' && isLevelValid && rawGrade) {
+    const derivedPhase = getPhaseFromGrade(rawLevel, rawGrade);
+    if (!derivedPhase || !derivedPhase.trim()) {
+      errors.push('Fase pembelajaran tidak dapat ditentukan untuk jenjang dan kelas ini.');
+    }
+  }
+
+  // 7. Subject: trimmed non-empty
+  const rawSubject = (setting.subject || '').trim();
+  if (!rawSubject) {
     errors.push('Mata pelajaran tidak boleh kosong.');
   }
 
