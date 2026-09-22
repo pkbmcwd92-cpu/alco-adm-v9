@@ -403,7 +403,11 @@ export function validateDocumentRequirements(
             context.k13Analysis
           );
           if (!kktpValidation.isSiap) {
-            missingFields.push(...kktpValidation.issues);
+            if (kktpValidation.issues.length > 0) {
+              missingFields.push(...kktpValidation.issues);
+            } else {
+              missingFields.push('Kriteria Ketercapaian Tujuan Pembelajaran (KKTP) belum berstatus SIAP.');
+            }
           }
         }
         break;

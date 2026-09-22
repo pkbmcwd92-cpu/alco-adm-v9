@@ -1569,18 +1569,16 @@ export function saveTP(tp: TPData): void {
 
   if (changeType === 'SUBSTANTIVE') {
     const atpIdx = (current.atps || []).findIndex((a) => a.academicSettingId === tp.academicSettingId);
-    const invalidatedAtpItemIds = new Set<string>();
+    let atpBecameStale = false;
     if (atpIdx >= 0 && current.atps[atpIdx].items && current.atps[atpIdx].items.length > 0) {
       const atpObj = current.atps[atpIdx];
-      (atpObj.items || []).forEach((item) => {
-        if (item.tpId && changedTpIds.has(item.tpId)) invalidatedAtpItemIds.add(item.id);
-      });
       current.atps[atpIdx] = {
         ...atpObj,
         workflowStatus: 'PERLU_DILENGKAPI',
         needsReview: true,
         reviewReason: 'Tujuan Pembelajaran (TP) acuan telah berubah secara substantif, alur ATP perlu ditinjau ulang.',
       };
+      atpBecameStale = true;
     }
 
     if (current.assessmentCriteria && current.assessmentCriteria.length > 0) {
@@ -1599,9 +1597,11 @@ export function saveTP(tp: TPData): void {
 
     current.learningPlans = (current.learningPlans || []).map((plan) => {
       if (plan.academicSettingId !== tp.academicSettingId || plan.status !== 'SIAP') return plan;
-      const referencesChangedTp = (plan.tpIds || []).some((id) => changedTpIds.has(id));
-      const referencesInvalidAtp = (plan.atpItemIds || []).some((id) => invalidatedAtpItemIds.has(id));
-      if (!referencesChangedTp && !referencesInvalidAtp) return plan;
+      const isAtpLinked = (plan.atpItemIds || []).length > 0;
+      const shouldInvalidate = isAtpLinked
+        ? atpBecameStale
+        : (plan.tpIds || []).some((id) => changedTpIds.has(id));
+      if (!shouldInvalidate) return plan;
       return {
         ...plan,
         status: 'PERLU_DILENGKAPI',

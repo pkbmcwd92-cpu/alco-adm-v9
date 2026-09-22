@@ -1189,6 +1189,7 @@ export function validateKKTPData(
   }> = [];
 
   const isK13 = academicSetting?.curriculum === 'Kurikulum 2013';
+  let allValid = true;
 
   if (!isK13) {
     if (!tp || !tp.items || tp.items.length === 0) {
@@ -1201,6 +1202,7 @@ export function validateKKTPData(
     }
     if (tp.workflowStatus !== 'SIAP' || tp.needsReview) {
       issues.push('Tujuan Pembelajaran (TP) acuan belum berstatus SIAP atau masih memerlukan peninjauan ulang.');
+      allValid = false;
     }
   }
 
@@ -1214,7 +1216,6 @@ export function validateKKTPData(
   }
 
   const tpItems = tp?.items || [];
-  let allValid = true;
 
   criteria.forEach((crit) => {
     const res = validateKKTPCriterion(crit, tpItems, k13Analysis, tp?.updatedAt);

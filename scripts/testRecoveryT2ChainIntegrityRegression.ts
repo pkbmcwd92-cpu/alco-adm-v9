@@ -77,7 +77,6 @@ const setting: AcademicSetting = {
   level: 'SMP',
   grade: 'Kelas 7',
   subject: 'Matematika',
-  subjectCode: 'MAT',
   phase: 'D',
   updatedAt: '2026-09-22T00:00:00.000Z',
 };
@@ -147,7 +146,6 @@ const readyLearningPlan: LearningPlan = {
   id: 'lp-t2',
   academicSettingId: setting.id,
   curriculumType: 'KURIKULUM_MERDEKA',
-  workspaceId: 'ws-t2',
   title: 'Rencana Pembelajaran TP.1',
   status: 'SIAP',
   sourceType: 'MANUAL',
@@ -233,7 +231,7 @@ const staleATP: ATPData = { ...readyATP, basedOnTpUpdatedAt: '2026-09-21T00:00:0
 const reviewedCriterion: AssessmentCriterion = { ...readyCriterion, needsReview: true, reviewReason: 'TP berubah.' };
 const reviewedPlan: AssessmentPlan = { ...readyAssessmentPlan, needsReview: true, reviewReason: 'KKTP berubah.' };
 
-assert.strictEqual(APP_BUILD_ID, 'T2.1-20260922-1', 'T2.1 build fingerprint must be set');
+assert.strictEqual(APP_BUILD_ID, 'T2.1.1-20260922-1', 'T2.1.1 build fingerprint must be set');
 
 assert.strictEqual(
   classifyTPChange(readyTP, { ...readyTP, workflowStatus: 'DRAFT', needsReview: true, reviewReason: 'Sync status only' }),
@@ -275,7 +273,7 @@ assert.strictEqual(
     academicSetting: setting,
     tp: reviewedTP,
     assessmentCriteria: [readyCriterion],
-  }).isValid,
+  }).valid,
   false,
   'AssessmentPlan must reject TP that still needs review'
 );
@@ -284,7 +282,7 @@ assert.strictEqual(
     academicSetting: setting,
     tp: readyTP,
     assessmentCriteria: [reviewedCriterion],
-  }).isValid,
+  }).valid,
   false,
   'AssessmentPlan must reject KKTP that still needs review'
 );
@@ -422,7 +420,9 @@ const changedTpOne: TPData = {
 assert.deepStrictEqual([...getChangedTPItemIds(tpThree, changedTpOne)], ['tp-item-1'], 'Only substantively changed TP item is returned');
 
 const lpA = { ...readyLearningPlan, id: 'lp-a', tpIds: ['tp-item-1'], atpItemIds: ['atp-item-1'] };
-const lpB = { ...readyLearningPlan, id: 'lp-b', tpIds: ['tp-item-3'], atpItemIds: [] };
+const lpB = { ...readyLearningPlan, id: 'lp-b', tpIds: ['tp-item-3'], atpItemIds: ['atp-item-3'] };
+const lpC = { ...readyLearningPlan, id: 'lp-c', tpIds: ['tp-item-3'], atpItemIds: [] };
+const lpD = { ...readyLearningPlan, id: 'lp-d', tpIds: ['tp-item-1'], atpItemIds: [] };
 const critA = { ...readyCriterion, id: 'crit-a', tpId: 'tp-item-1' };
 const critB = { ...readyCriterion, id: 'crit-b', tpId: 'tp-item-3' };
 const planA = { ...readyAssessmentPlan, id: 'plan-a', tpIds: ['tp-item-1'], criterionIds: ['crit-a'] };
@@ -430,7 +430,7 @@ const planB = { ...readyAssessmentPlan, id: 'plan-b', tpIds: ['tp-item-3'], crit
 seedState({
   tps: [tpThree],
   atps: [{ ...readyATP, items: [{ ...readyATP.items[0], tpId: 'tp-item-1' }] }],
-  learningPlans: [lpA, lpB],
+  learningPlans: [lpA, lpB, lpC, lpD],
   assessmentCriteria: [critA, critB],
   assessmentPlans: [planA, planB],
   assessmentPackages: [
@@ -440,8 +440,10 @@ seedState({
 });
 saveTP(changedTpOne);
 state = loadAppStorage();
-assert.strictEqual(state.learningPlans.find((p) => p.id === 'lp-a')?.status, 'PERLU_DILENGKAPI', 'Changed TP invalidates matching LearningPlan');
-assert.strictEqual(state.learningPlans.find((p) => p.id === 'lp-b')?.status, 'SIAP', 'Unchanged TP leaves unrelated LearningPlan intact');
+assert.strictEqual(state.learningPlans.find((p) => p.id === 'lp-a')?.status, 'PERLU_DILENGKAPI', 'Changed TP invalidates ATP-linked LearningPlan A');
+assert.strictEqual(state.learningPlans.find((p) => p.id === 'lp-b')?.status, 'PERLU_DILENGKAPI', 'Changed TP invalidates ATP-linked LearningPlan B via stale ATP');
+assert.strictEqual(state.learningPlans.find((p) => p.id === 'lp-c')?.status, 'SIAP', 'Unchanged TP leaves TP-only LearningPlan C intact');
+assert.strictEqual(state.learningPlans.find((p) => p.id === 'lp-d')?.status, 'PERLU_DILENGKAPI', 'Changed TP invalidates matching TP-only LearningPlan D');
 assert.strictEqual(state.assessmentCriteria.find((c) => c.id === 'crit-a')?.needsReview, true, 'Changed TP invalidates matching KKTP');
 assert.strictEqual(state.assessmentCriteria.find((c) => c.id === 'crit-b')?.needsReview, false, 'Unchanged TP leaves unrelated KKTP intact');
 assert.strictEqual(state.assessmentPlans.find((p) => p.id === 'plan-a')?.workflowStatus, 'PERLU_DILENGKAPI', 'Changed TP invalidates matching AssessmentPlan');
@@ -468,6 +470,7 @@ assert.strictEqual(validateATPDataWorkflow({ ...readyATP, needsReview: false, ba
 assert.strictEqual(validateKKTPData([readyCriterion], { ...readyTP, workflowStatus: 'DRAFT' }, setting).isSiap, false, 'KKTP blocks DRAFT TP');
 assert.strictEqual(validateKKTPData([readyCriterion], { ...readyTP, workflowStatus: 'PERLU_DILENGKAPI' }, setting).isSiap, false, 'KKTP blocks PERLU_DILENGKAPI TP');
 assert.strictEqual(validateKKTPData([readyCriterion], reviewedTP, setting).isSiap, false, 'KKTP blocks TP needsReview');
+assert.strictEqual(validateKKTPData([readyCriterion], readyTP, setting).isSiap, true, 'KKTP allows SIAP TP with valid criteria');
 
 assert.deepStrictEqual([...getChangedAssessmentCriterionIds([critA, critB], [{ ...critA, indicators: ['Substantive new indicator'] }, critB])], ['crit-a'], 'Only substantively changed criterion is returned');
 seedState({ assessmentCriteria: [critA, critB], assessmentPlans: [planA, planB], assessmentPackages: [
