@@ -79,6 +79,8 @@ const mockTPDataMulti: TPData = {
       order: 3,
     },
   ],
+  workflowStatus: 'SIAP',
+  needsReview: false,
   updatedAt: new Date().toISOString(),
 };
 
@@ -95,6 +97,8 @@ const mockTPDataSingle: TPData = {
       order: 1,
     },
   ],
+  workflowStatus: 'SIAP',
+  needsReview: false,
   updatedAt: new Date().toISOString(),
 };
 
@@ -107,6 +111,8 @@ const mockCriteria: AssessmentCriterion[] = [
     approach: 'rubrik',
     indicators: ['Identifikasi struktur', 'Kaidah kebahasaan'],
     levels: [],
+    workflowStatus: 'SIAP',
+    needsReview: false,
     updatedAt: new Date().toISOString(),
   },
   {
@@ -117,6 +123,8 @@ const mockCriteria: AssessmentCriterion[] = [
     approach: 'rubrik',
     indicators: ['Artikulasi', 'Ketepatan materi'],
     levels: [],
+    workflowStatus: 'SIAP',
+    needsReview: false,
     updatedAt: new Date().toISOString(),
   },
 ];

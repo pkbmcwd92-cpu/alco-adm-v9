@@ -196,6 +196,62 @@ function normalizeStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map((item) => normalizeText(item)).filter(Boolean).sort() : [];
 }
 
+function pedagogicalCPFingerprint(cp?: CPData | null): string {
+  if (!cp) return '';
+  return stableStringify({
+    academicSettingId: cp.academicSettingId,
+    cpId: cp.cpId,
+    cpVersion: cp.cpVersion,
+    regulationIds: normalizeStringArray(cp.regulationIds),
+    regulationSourceId: cp.regulationSourceId,
+    generalDescription: normalizeText(cp.generalDescription),
+    source: cp.source ? {
+      id: cp.source.id,
+      title: normalizeText(cp.source.title),
+      institution: normalizeText(cp.source.institution),
+      documentYear: normalizeText(cp.source.documentYear),
+      page: normalizeText(cp.source.page),
+      regulationId: cp.source.regulationId,
+      regulationIds: normalizeStringArray(cp.source.regulationIds),
+      versionCode: cp.source.versionCode,
+      verificationStatus: normalizeCPVerificationStatus(cp.source.verificationStatus),
+    } : null,
+    elements: (cp.elements || []).map((element) => ({
+      id: element.id,
+      name: normalizeText(element.name),
+      content: normalizeText(element.content),
+    })),
+  });
+}
+
+function pedagogicalCPAnalysisFingerprint(analysis?: CPAnalysisData | null): string {
+  if (!analysis) return '';
+  return stableStringify({
+    academicSettingId: analysis.academicSettingId,
+    cpId: analysis.cpId,
+    cpSourceId: analysis.cpSourceId,
+    cpRegulationIds: normalizeStringArray(analysis.cpRegulationIds),
+    cpVersion: analysis.cpVersion,
+    academicYear: analysis.academicYear,
+    subjectCode: analysis.subjectCode,
+    phase: normalizePhaseCode(analysis.phase) || normalizeText(analysis.phase),
+    generalSummary: normalizeText(analysis.generalSummary),
+    sourceCPVersion: analysis.sourceCPVersion,
+    basedOnCpUpdatedAt: analysis.basedOnCpUpdatedAt,
+    items: (analysis.items || []).map((item) => ({
+      id: item.id,
+      elementId: item.elementId,
+      elementName: normalizeText(item.elementName),
+      cpText: normalizeText(item.cpText),
+      cpCompetence: normalizeText(item.cpCompetence),
+      materialScope: normalizeText(item.materialScope),
+      meaningfulUnderstanding: normalizeText(item.meaningfulUnderstanding),
+      suggestedTp: normalizeText(item.suggestedTp),
+      order: item.order,
+    })),
+  });
+}
+
 function pedagogicalTPFingerprint(tp?: TPData | null): string {
   if (!tp) return '';
   return stableStringify({
@@ -211,6 +267,7 @@ function pedagogicalTPFingerprint(tp?: TPData | null): string {
       statement: normalizeText(item.statement || item.description),
       competence: normalizeText(item.competence || (item as any).competency),
       contentScope: normalizeText(item.contentScope),
+      materialScope: normalizeText((item as any).materialScope),
       order: item.order ?? item.sequence ?? null,
       p3Dimensions: normalizeStringArray(item.p3Dimensions),
       graduateProfileDimensions: normalizeStringArray(item.graduateProfileDimensions),
@@ -261,6 +318,56 @@ function pedagogicalCriterionFingerprint(criteria?: AssessmentCriterion[] | null
   })));
 }
 
+function pedagogicalTPItemFingerprint(item?: TPItem | null): string {
+  if (!item) return '';
+  return stableStringify({
+    id: item.id,
+    code: normalizeText(item.code),
+    statement: normalizeText(item.statement || item.description),
+    competence: normalizeText(item.competence || (item as any).competency),
+    contentScope: normalizeText(item.contentScope),
+    materialScope: normalizeText((item as any).materialScope),
+    order: item.order ?? item.sequence ?? null,
+    p3Dimensions: normalizeStringArray(item.p3Dimensions),
+    graduateProfileDimensions: normalizeStringArray(item.graduateProfileDimensions),
+  });
+}
+
+function pedagogicalSingleCriterionFingerprint(criterion?: AssessmentCriterion | null): string {
+  if (!criterion) return '';
+  return stableStringify({
+    id: criterion.id,
+    academicSettingId: criterion.academicSettingId,
+    tpId: criterion.tpId,
+    description: normalizeText(criterion.description),
+    approach: criterion.approach,
+    criterionMode: criterion.criterionMode,
+    method: criterion.method,
+    indicators: normalizeStringArray(criterion.indicators),
+    levels: stableStringify(criterion.levels || []),
+    passingThreshold: criterion.passingThreshold ?? null,
+    kompleksitas: criterion.kompleksitas ?? null,
+    dayaDukung: criterion.dayaDukung ?? null,
+    intake: criterion.intake ?? null,
+    notes: normalizeText(criterion.notes),
+  });
+}
+
+export function classifyCPChange(oldCP?: CPData | null, newCP?: CPData | null): SemanticChangeType {
+  if (!oldCP && !newCP) return 'NONE';
+  if (pedagogicalCPFingerprint(oldCP) !== pedagogicalCPFingerprint(newCP)) return 'SUBSTANTIVE';
+  return stableStringify(oldCP || null) === stableStringify(newCP || null) ? 'NONE' : 'NON_SUBSTANTIVE';
+}
+
+export function classifyCPAnalysisChange(
+  oldAnalysis?: CPAnalysisData | null,
+  newAnalysis?: CPAnalysisData | null
+): SemanticChangeType {
+  if (!oldAnalysis && !newAnalysis) return 'NONE';
+  if (pedagogicalCPAnalysisFingerprint(oldAnalysis) !== pedagogicalCPAnalysisFingerprint(newAnalysis)) return 'SUBSTANTIVE';
+  return stableStringify(oldAnalysis || null) === stableStringify(newAnalysis || null) ? 'NONE' : 'NON_SUBSTANTIVE';
+}
+
 export function classifyTPChange(oldTP?: TPData | null, newTP?: TPData | null): SemanticChangeType {
   if (!oldTP && !newTP) return 'NONE';
   if (pedagogicalTPFingerprint(oldTP) !== pedagogicalTPFingerprint(newTP)) return 'SUBSTANTIVE';
@@ -280,6 +387,47 @@ export function classifyAssessmentCriteriaChange(
   if ((!oldCriteria || oldCriteria.length === 0) && (!newCriteria || newCriteria.length === 0)) return 'NONE';
   if (pedagogicalCriterionFingerprint(oldCriteria) !== pedagogicalCriterionFingerprint(newCriteria)) return 'SUBSTANTIVE';
   return stableStringify(oldCriteria || []) === stableStringify(newCriteria || []) ? 'NONE' : 'NON_SUBSTANTIVE';
+}
+
+export function getChangedTPItemIds(oldTP?: TPData | null, newTP?: TPData | null): Set<string> {
+  const changed = new Set<string>();
+  const oldMap = new Map((oldTP?.items || []).map((item) => [item.id, item]));
+  const newMap = new Map((newTP?.items || []).map((item) => [item.id, item]));
+  oldMap.forEach((oldItem, id) => {
+    const newItem = newMap.get(id);
+    if (!newItem || pedagogicalTPItemFingerprint(oldItem) !== pedagogicalTPItemFingerprint(newItem)) {
+      changed.add(id);
+    }
+  });
+  newMap.forEach((newItem, id) => {
+    const oldItem = oldMap.get(id);
+    if (!oldItem || pedagogicalTPItemFingerprint(oldItem) !== pedagogicalTPItemFingerprint(newItem)) {
+      changed.add(id);
+    }
+  });
+  return changed;
+}
+
+export function getChangedAssessmentCriterionIds(
+  oldCriteria?: AssessmentCriterion[] | null,
+  newCriteria?: AssessmentCriterion[] | null
+): Set<string> {
+  const changed = new Set<string>();
+  const oldMap = new Map((oldCriteria || []).map((criterion) => [criterion.id, criterion]));
+  const newMap = new Map((newCriteria || []).map((criterion) => [criterion.id, criterion]));
+  oldMap.forEach((oldCriterion, id) => {
+    const newCriterion = newMap.get(id);
+    if (!newCriterion || pedagogicalSingleCriterionFingerprint(oldCriterion) !== pedagogicalSingleCriterionFingerprint(newCriterion)) {
+      changed.add(id);
+    }
+  });
+  newMap.forEach((newCriterion, id) => {
+    const oldCriterion = oldMap.get(id);
+    if (!oldCriterion || pedagogicalSingleCriterionFingerprint(oldCriterion) !== pedagogicalSingleCriterionFingerprint(newCriterion)) {
+      changed.add(id);
+    }
+  });
+  return changed;
 }
 
 /**
@@ -591,6 +739,11 @@ export function validateATPDataWorkflow(
     }
     if (atp.tpDataId && atp.tpDataId !== tp.id) {
       issues.push(`ID TPData pada ATP (${atp.tpDataId}) tidak sesuai dengan TP rujukan (${tp.id}).`);
+    }
+    if (!atp.basedOnTpUpdatedAt) {
+      issues.push('Lineage ATP belum mencatat waktu TP acuan saat dikonfirmasi.');
+    } else if (tp.updatedAt && atp.basedOnTpUpdatedAt !== tp.updatedAt) {
+      issues.push('TP acuan telah berubah sejak ATP dikonfirmasi.');
     }
   }
 
@@ -1045,6 +1198,9 @@ export function validateKKTPData(
         issues: ['Daftar Tujuan Pembelajaran (TP) acuan belum tersedia.'],
         criteriaResults: [],
       };
+    }
+    if (tp.workflowStatus !== 'SIAP' || tp.needsReview) {
+      issues.push('Tujuan Pembelajaran (TP) acuan belum berstatus SIAP atau masih memerlukan peninjauan ulang.');
     }
   }
 

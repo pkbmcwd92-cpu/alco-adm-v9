@@ -88,6 +88,8 @@ async function runRegressionSuite() {
         p3Dimensions: ['Mandiri', 'Kreatif'],
       },
     ],
+    workflowStatus: 'SIAP',
+    needsReview: false,
   };
 
   const mockAtpData: ATPData = {
@@ -95,6 +97,9 @@ async function runRegressionSuite() {
     academicSettingId: 'setting-1',
     updatedAt: new Date().toISOString(),
     totalJP: 36,
+    workflowStatus: 'SIAP',
+    needsReview: false,
+    basedOnTpUpdatedAt: mockTpData.updatedAt,
     items: [
       {
         id: 'atp-201',

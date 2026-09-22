@@ -46,6 +46,8 @@ function runTests() {
       { id: 'tp-1', code: 'TP.1', statement: 'Memahami wujud zat', competence: 'Memahami', contentScope: 'Wujud Zat', p3Dimensions: [], order: 1 },
       { id: 'tp-2', code: 'TP.2', statement: 'Menganalisis perubahan wujud zat', competence: 'Menganalisis', contentScope: 'Perubahan Wujud Zat', p3Dimensions: [], order: 2 },
     ],
+    workflowStatus: 'SIAP',
+    needsReview: false,
     updatedAt: new Date().toISOString(),
   };
 

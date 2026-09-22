@@ -23,6 +23,7 @@ import { PdfDocumentBuilder, buildPdfFromOptions } from './renderers/pdf/pdfRend
 import { PDF_THEME } from './renderers/pdf/pdfTheme';
 
 import { validateLearningPlan } from '../learningPlanService';
+import { validateKKTPData } from '../cpWorkflowService';
 import { checkAssessmentExportEligibility } from './assessmentExportService';
 
 export * from './types';
@@ -394,8 +395,16 @@ export function validateDocumentRequirements(
       }
 
       case 'KKTP':
-        if (tpCount === 0) {
-          missingFields.push('Tujuan Pembelajaran (TP) belum dirumuskan');
+        {
+          const kktpValidation = validateKKTPData(
+            context.assessmentCriteria || [],
+            context.tp,
+            context.academicSetting,
+            context.k13Analysis
+          );
+          if (!kktpValidation.isSiap) {
+            missingFields.push(...kktpValidation.issues);
+          }
         }
         break;
 

@@ -369,6 +369,7 @@ const updatedTpTime = '2026-03-05T12:00:00.000Z';
 const siapCrit: AssessmentCriterion = {
   ...validRubrikCrit,
   workflowStatus: 'SIAP',
+  needsReview: false,
   basedOnTpUpdatedAt: baseTpTime,
 };
 
@@ -385,6 +386,8 @@ const mockTPData = {
   id: 'tp-data-1',
   academicSettingId: 'acad-1',
   items: canonicalTPs,
+  workflowStatus: 'SIAP' as const,
+  needsReview: false,
   updatedAt: updatedTpTime,
 };
 

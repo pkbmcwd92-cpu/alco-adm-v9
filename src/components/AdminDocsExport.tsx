@@ -143,7 +143,7 @@ export const AdminDocsExport: React.FC<AdminDocsExportProps> = ({
   const [exportErrorMessage, setExportErrorMessage] = useState<string | null>(null);
   const [localDocs, setLocalDocs] = useState<AppDocumentRecord[]>(documents);
 
-  const readyAssessmentPackages = (assessmentPackages || []).filter((p) => p.workflowStatus === 'SIAP');
+  const readyAssessmentPackages = (assessmentPackages || []).filter((p) => p.workflowStatus === 'SIAP' && p.needsReview !== true);
   const [selectedAssessmentPackageId, setSelectedAssessmentPackageId] = useState<string>(() => {
     if (readyAssessmentPackages.length === 1) return readyAssessmentPackages[0].id;
     return '';

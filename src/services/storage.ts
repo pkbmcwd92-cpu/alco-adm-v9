@@ -36,9 +36,13 @@ import {
   validateATPReferences,
   normalizeATPReferences,
   validateATPDataWorkflow,
+  classifyCPChange,
+  classifyCPAnalysisChange,
   classifyTPChange,
   classifyATPChange,
   classifyAssessmentCriteriaChange,
+  getChangedTPItemIds,
+  getChangedAssessmentCriterionIds,
 } from './cpWorkflowService';
 import {
   migrateLegacyLearningPlan,
@@ -1396,9 +1400,12 @@ export function deletePrincipalHistory(historyId: string): void {
 
 export function saveCPAnalysis(analysis: CPAnalysisData): void {
   const current = loadAppStorage();
+  const oldAnalysis = (current.cpAnalyses || []).find((a) => a.academicSettingId === analysis.academicSettingId);
+  const changeType = classifyCPAnalysisChange(oldAnalysis, analysis);
+  const now = new Date().toISOString();
   const updatedAnalysis = {
     ...analysis,
-    updatedAt: new Date().toISOString(),
+    updatedAt: changeType === 'SUBSTANTIVE' || !oldAnalysis ? now : oldAnalysis.updatedAt,
   };
   const list = current.cpAnalyses || [];
   const idx = list.findIndex((a) => a.academicSettingId === analysis.academicSettingId);
@@ -1409,15 +1416,16 @@ export function saveCPAnalysis(analysis: CPAnalysisData): void {
   }
   current.cpAnalyses = list;
 
-  // Invalidate TP if CP Analysis updated
-  const tpIdx = (current.tps || []).findIndex((t) => t.academicSettingId === analysis.academicSettingId);
-  if (tpIdx >= 0 && current.tps[tpIdx].items && current.tps[tpIdx].items.length > 0) {
-    current.tps[tpIdx] = {
-      ...current.tps[tpIdx],
-      needsReview: true,
-      reviewReason: 'Analisis CP rujukan telah diperbarui.',
-      updatedAt: new Date().toISOString(),
-    };
+  if (changeType === 'SUBSTANTIVE') {
+    const tpIdx = (current.tps || []).findIndex((t) => t.academicSettingId === analysis.academicSettingId);
+    if (tpIdx >= 0 && current.tps[tpIdx].items && current.tps[tpIdx].items.length > 0) {
+      current.tps[tpIdx] = {
+        ...current.tps[tpIdx],
+        workflowStatus: 'PERLU_DILENGKAPI',
+        needsReview: true,
+        reviewReason: 'Analisis CP rujukan berubah secara substantif.',
+      };
+    }
   }
 
   saveAppStorage(current);
@@ -1503,9 +1511,12 @@ export function saveAcademicSetting(setting: AcademicSetting, customWorkspaceNam
 
 export function saveCP(cp: CPData): void {
   const current = loadAppStorage();
+  const oldCP = current.cps.find((c) => c.academicSettingId === cp.academicSettingId);
+  const changeType = classifyCPChange(oldCP, cp);
+  const now = new Date().toISOString();
   const updatedCP = {
     ...cp,
-    updatedAt: new Date().toISOString(),
+    updatedAt: changeType === 'SUBSTANTIVE' || !oldCP ? now : oldCP.updatedAt,
   };
   const idx = current.cps.findIndex((c) => c.academicSettingId === cp.academicSettingId);
   if (idx >= 0) {
@@ -1514,15 +1525,25 @@ export function saveCP(cp: CPData): void {
     current.cps.push(updatedCP);
   }
 
-  // Invalidate TP if CP updated
-  const tpIdx = (current.tps || []).findIndex((t) => t.academicSettingId === cp.academicSettingId);
-  if (tpIdx >= 0 && current.tps[tpIdx].items && current.tps[tpIdx].items.length > 0) {
-    current.tps[tpIdx] = {
-      ...current.tps[tpIdx],
-      needsReview: true,
-      reviewReason: 'Capaian Pembelajaran (CP) rujukan telah diperbarui.',
-      updatedAt: new Date().toISOString(),
-    };
+  if (changeType === 'SUBSTANTIVE') {
+    current.cpAnalyses = (current.cpAnalyses || []).map((analysis) => {
+      if (analysis.academicSettingId !== cp.academicSettingId) return analysis;
+      return {
+        ...analysis,
+        needsReview: true,
+        reviewReason: 'Capaian Pembelajaran (CP) rujukan berubah secara substantif.',
+      };
+    });
+
+    const tpIdx = (current.tps || []).findIndex((t) => t.academicSettingId === cp.academicSettingId);
+    if (tpIdx >= 0 && current.tps[tpIdx].items && current.tps[tpIdx].items.length > 0) {
+      current.tps[tpIdx] = {
+        ...current.tps[tpIdx],
+        workflowStatus: 'PERLU_DILENGKAPI',
+        needsReview: true,
+        reviewReason: 'Capaian Pembelajaran (CP) rujukan berubah secara substantif.',
+      };
+    }
   }
 
   saveAppStorage(current);
@@ -1544,14 +1565,16 @@ export function saveTP(tp: TPData): void {
     current.tps.push(updatedTP);
   }
 
-  const oldTpIds = new Set((oldTP?.items || []).map((item) => item.id));
-  const newTpIds = new Set((updatedTP.items || []).map((item) => item.id));
-  const affectedTpIds = new Set<string>([...oldTpIds, ...newTpIds]);
+  const changedTpIds = getChangedTPItemIds(oldTP, updatedTP);
 
   if (changeType === 'SUBSTANTIVE') {
     const atpIdx = (current.atps || []).findIndex((a) => a.academicSettingId === tp.academicSettingId);
+    const invalidatedAtpItemIds = new Set<string>();
     if (atpIdx >= 0 && current.atps[atpIdx].items && current.atps[atpIdx].items.length > 0) {
       const atpObj = current.atps[atpIdx];
+      (atpObj.items || []).forEach((item) => {
+        if (item.tpId && changedTpIds.has(item.tpId)) invalidatedAtpItemIds.add(item.id);
+      });
       current.atps[atpIdx] = {
         ...atpObj,
         workflowStatus: 'PERLU_DILENGKAPI',
@@ -1562,7 +1585,7 @@ export function saveTP(tp: TPData): void {
 
     if (current.assessmentCriteria && current.assessmentCriteria.length > 0) {
       current.assessmentCriteria = current.assessmentCriteria.map((c) => {
-        if (c.academicSettingId === tp.academicSettingId) {
+        if (c.academicSettingId === tp.academicSettingId && changedTpIds.has(c.tpId)) {
           return {
             ...c,
             needsReview: true,
@@ -1576,8 +1599,9 @@ export function saveTP(tp: TPData): void {
 
     current.learningPlans = (current.learningPlans || []).map((plan) => {
       if (plan.academicSettingId !== tp.academicSettingId || plan.status !== 'SIAP') return plan;
-      const referenced = (plan.tpIds || []).some((id) => affectedTpIds.has(id));
-      if (!referenced) return plan;
+      const referencesChangedTp = (plan.tpIds || []).some((id) => changedTpIds.has(id));
+      const referencesInvalidAtp = (plan.atpItemIds || []).some((id) => invalidatedAtpItemIds.has(id));
+      if (!referencesChangedTp && !referencesInvalidAtp) return plan;
       return {
         ...plan,
         status: 'PERLU_DILENGKAPI',
@@ -1588,7 +1612,7 @@ export function saveTP(tp: TPData): void {
 
     current.assessmentPlans = (current.assessmentPlans || []).map((plan) => {
       if (plan.academicSettingId !== tp.academicSettingId) return plan;
-      const referenced = (plan.tpIds || []).some((id) => affectedTpIds.has(id));
+      const referenced = (plan.tpIds || []).some((id) => changedTpIds.has(id));
       if (!referenced) return plan;
       return {
         ...plan,
@@ -1601,11 +1625,11 @@ export function saveTP(tp: TPData): void {
 
     const affectedAssessmentPlanIds = new Set(
       (current.assessmentPlans || [])
-        .filter((plan) => plan.academicSettingId === tp.academicSettingId && (plan.tpIds || []).some((id) => affectedTpIds.has(id)))
+        .filter((plan) => plan.academicSettingId === tp.academicSettingId && (plan.tpIds || []).some((id) => changedTpIds.has(id)))
         .map((plan) => plan.id)
     );
     current.assessmentPackages = (current.assessmentPackages || []).map((pkg) => {
-      const blueprintRefsTp = (pkg.blueprintItems || []).some((item) => affectedTpIds.has(item.objectiveRefId));
+      const blueprintRefsTp = (pkg.blueprintItems || []).some((item) => changedTpIds.has(item.objectiveRefId));
       if (pkg.academicSettingId !== tp.academicSettingId || (!affectedAssessmentPlanIds.has(pkg.assessmentPlanId) && !blueprintRefsTp)) return pkg;
       return {
         ...pkg,
@@ -1649,7 +1673,7 @@ export function saveATP(atp: ATPData): void {
     workflowStatus: val.status,
     needsReview: atp.needsReview === true && atp.workflowStatus !== 'SIAP' ? true : val.issues.length > 0 ? true : false,
     reviewReason: atp.needsReview === true && atp.workflowStatus !== 'SIAP' ? atp.reviewReason : val.issues.length > 0 ? val.issues.join('; ') : undefined,
-    basedOnTpUpdatedAt: tp?.updatedAt || atp.basedOnTpUpdatedAt || new Date().toISOString(),
+    basedOnTpUpdatedAt: atp.basedOnTpUpdatedAt,
     updatedAt: changeType === 'SUBSTANTIVE' || !oldATP ? now : oldATP.updatedAt,
   };
 
@@ -1777,17 +1801,18 @@ export function deleteAttendanceSession(sessionId: string): void {
 // ==========================================
 // SCOPED CRUD: KKTP (CRITERIA)
 // ==========================================
-export function saveAssessmentCriteria(criteria: AssessmentCriterion[]): void {
-  const current = loadAppStorage();
-  const academicSettingId = criteria[0]?.academicSettingId;
+function persistAssessmentCriteriaForSetting(
+  current: AppStorageState,
+  academicSettingId: string | undefined,
+  criteria: AssessmentCriterion[]
+): void {
   const oldCriteria = academicSettingId
     ? (current.assessmentCriteria || []).filter((c) => c.academicSettingId === academicSettingId)
     : (current.assessmentCriteria || []).filter((c) => criteria.some((next) => next.id === c.id));
   const changeType = classifyAssessmentCriteriaChange(oldCriteria, criteria);
-  const oldCriterionIds = new Set(oldCriteria.map((c) => c.id));
-  const newCriterionIds = new Set(criteria.map((c) => c.id));
-  const affectedCriterionIds = new Set<string>([...oldCriterionIds, ...newCriterionIds]);
+  const changedCriterionIds = getChangedAssessmentCriterionIds(oldCriteria, criteria);
   const now = new Date().toISOString();
+
   if (academicSettingId) {
     current.assessmentCriteria = [
       ...(current.assessmentCriteria || []).filter((c) => c.academicSettingId !== academicSettingId),
@@ -1799,10 +1824,11 @@ export function saveAssessmentCriteria(criteria: AssessmentCriterion[]): void {
     criteria.forEach((c) => existingMap.set(c.id, c));
     current.assessmentCriteria = Array.from(existingMap.values());
   }
+
   if (academicSettingId && changeType === 'SUBSTANTIVE') {
     current.assessmentPlans = (current.assessmentPlans || []).map((plan) => {
       if (plan.academicSettingId !== academicSettingId) return plan;
-      const referenced = (plan.criterionIds || []).some((id) => affectedCriterionIds.has(id));
+      const referenced = (plan.criterionIds || []).some((id) => changedCriterionIds.has(id));
       if (!referenced) return plan;
       return {
         ...plan,
@@ -1814,11 +1840,11 @@ export function saveAssessmentCriteria(criteria: AssessmentCriterion[]): void {
     });
     const affectedPlanIds = new Set(
       (current.assessmentPlans || [])
-        .filter((plan) => plan.academicSettingId === academicSettingId && (plan.criterionIds || []).some((id) => affectedCriterionIds.has(id)))
+        .filter((plan) => plan.academicSettingId === academicSettingId && (plan.criterionIds || []).some((id) => changedCriterionIds.has(id)))
         .map((plan) => plan.id)
     );
     current.assessmentPackages = (current.assessmentPackages || []).map((pkg) => {
-      const blueprintRefsCriterion = (pkg.blueprintItems || []).some((item) => affectedCriterionIds.has((item as any).criterionId || ''));
+      const blueprintRefsCriterion = (pkg.blueprintItems || []).some((item) => changedCriterionIds.has((item as any).criterionId || ''));
       if (pkg.academicSettingId !== academicSettingId || (!affectedPlanIds.has(pkg.assessmentPlanId) && !blueprintRefsCriterion)) return pkg;
       return {
         ...pkg,
@@ -1829,23 +1855,36 @@ export function saveAssessmentCriteria(criteria: AssessmentCriterion[]): void {
       };
     });
   }
+}
+
+export function saveAssessmentCriteria(criteria: AssessmentCriterion[]): void {
+  const current = loadAppStorage();
+  const academicSettingId = criteria[0]?.academicSettingId;
+  persistAssessmentCriteriaForSetting(current, academicSettingId, criteria);
   saveAppStorage(current);
 }
 
 export function saveAssessmentCriterion(criterion: AssessmentCriterion): void {
   const current = loadAppStorage();
-  const idx = (current.assessmentCriteria || []).findIndex((c) => c.id === criterion.id);
-  if (idx >= 0) {
-    current.assessmentCriteria![idx] = criterion;
-  } else {
-    current.assessmentCriteria = [...(current.assessmentCriteria || []), criterion];
-  }
+  const settingCriteria = (current.assessmentCriteria || []).filter((c) => c.academicSettingId === criterion.academicSettingId);
+  const idx = settingCriteria.findIndex((c) => c.id === criterion.id);
+  const nextCriteria = idx >= 0
+    ? settingCriteria.map((c) => c.id === criterion.id ? criterion : c)
+    : [...settingCriteria, criterion];
+  persistAssessmentCriteriaForSetting(current, criterion.academicSettingId, nextCriteria);
   saveAppStorage(current);
 }
 
 export function deleteAssessmentCriterion(criterionId: string): void {
   const current = loadAppStorage();
-  current.assessmentCriteria = (current.assessmentCriteria || []).filter((c) => c.id !== criterionId);
+  const deleted = (current.assessmentCriteria || []).find((c) => c.id === criterionId);
+  if (!deleted) {
+    saveAppStorage(current);
+    return;
+  }
+  const nextCriteria = (current.assessmentCriteria || [])
+    .filter((c) => c.academicSettingId === deleted.academicSettingId && c.id !== criterionId);
+  persistAssessmentCriteriaForSetting(current, deleted.academicSettingId, nextCriteria);
   saveAppStorage(current);
 }
 
@@ -2082,24 +2121,16 @@ export function getLearningPlansForSetting(academicSettingId: string): LearningP
 
 export function saveAssessmentPlan(plan: AssessmentPlan): void {
   const state = loadAppStorage();
-  if (!state.assessmentPlans) state.assessmentPlans = [];
-  const idx = state.assessmentPlans.findIndex((p) => p.id === plan.id);
-  const updatedPlan: AssessmentPlan = {
-    ...plan,
-    updatedAt: new Date().toISOString(),
-  };
-  if (idx >= 0) {
-    state.assessmentPlans[idx] = updatedPlan;
-  } else {
-    state.assessmentPlans.push(updatedPlan);
-  }
+  persistAssessmentPlanWithPackageInvalidation(state, plan);
   saveAppStorage(state);
 }
 
 export function deleteAssessmentPlan(planId: string): void {
   const state = loadAppStorage();
   if (!state.assessmentPlans) return;
+  const now = new Date().toISOString();
   state.assessmentPlans = state.assessmentPlans.filter((p) => p.id !== planId);
+  invalidatePackagesForAssessmentPlan(state, planId, 'Parent AssessmentPlan telah dihapus.', now);
   saveAppStorage(state);
 }
 
@@ -2108,14 +2139,75 @@ export function getAssessmentPlansForSetting(academicSettingId: string): Assessm
   return (state.assessmentPlans || []).filter((p) => p.academicSettingId === academicSettingId);
 }
 
+function stablePlanFingerprint(plan?: AssessmentPlan | null): string {
+  if (!plan) return '';
+  return JSON.stringify({
+    title: plan.title || '',
+    purpose: plan.purpose,
+    timing: plan.timing,
+    scopeType: plan.scopeType,
+    tpIds: [...(plan.tpIds || [])].sort(),
+    criterionIds: [...(plan.criterionIds || [])].sort(),
+    instruments: (plan.instruments || []).map((instrument) => ({
+      id: instrument.id,
+      type: instrument.type,
+      label: instrument.label || '',
+    })).sort((a, b) => a.id.localeCompare(b.id)),
+    displayLabel: plan.displayLabel || '',
+    customTimingLabel: plan.customTimingLabel || '',
+    customScopeLabel: plan.customScopeLabel || '',
+  });
+}
+
+function invalidatePackagesForAssessmentPlan(state: AppStorageState, planId: string, reason: string, now: string): void {
+  state.assessmentPackages = (state.assessmentPackages || []).map((pkg) => {
+    if (pkg.assessmentPlanId !== planId) return pkg;
+    return {
+      ...pkg,
+      workflowStatus: 'PERLU_DILENGKAPI',
+      needsReview: true,
+      reviewReason: reason,
+      updatedAt: now,
+    };
+  });
+}
+
+function persistAssessmentPlanWithPackageInvalidation(state: AppStorageState, plan: AssessmentPlan): void {
+  if (!state.assessmentPlans) state.assessmentPlans = [];
+  const idx = state.assessmentPlans.findIndex((p) => p.id === plan.id);
+  const oldPlan = idx >= 0 ? state.assessmentPlans[idx] : undefined;
+  const now = new Date().toISOString();
+  const updatedPlan: AssessmentPlan = {
+    ...plan,
+    updatedAt: now,
+  };
+  const parentBecameInvalid = !!oldPlan &&
+    oldPlan.workflowStatus === 'SIAP' &&
+    oldPlan.needsReview !== true &&
+    (updatedPlan.workflowStatus !== 'SIAP' || updatedPlan.needsReview === true);
+  const substantiveChanged = !!oldPlan && stablePlanFingerprint(oldPlan) !== stablePlanFingerprint(updatedPlan);
+
+  if (idx >= 0) {
+    state.assessmentPlans[idx] = updatedPlan;
+  } else {
+    state.assessmentPlans.push(updatedPlan);
+  }
+
+  if (parentBecameInvalid || substantiveChanged) {
+    invalidatePackagesForAssessmentPlan(
+      state,
+      updatedPlan.id,
+      parentBecameInvalid
+        ? 'Parent AssessmentPlan belum SIAP atau memerlukan review.'
+        : 'Parent AssessmentPlan berubah secara substantif.',
+      now
+    );
+  }
+}
+
 export function saveAssessmentPlansBulk(plans: AssessmentPlan[]): void {
   const state = loadAppStorage();
-  if (!state.assessmentPlans) state.assessmentPlans = [];
-  const planMap = new Map(state.assessmentPlans.map((p) => [p.id, p]));
-  plans.forEach((p) => {
-    planMap.set(p.id, { ...p, updatedAt: new Date().toISOString() });
-  });
-  state.assessmentPlans = Array.from(planMap.values());
+  plans.forEach((plan) => persistAssessmentPlanWithPackageInvalidation(state, plan));
   saveAppStorage(state);
 }
 

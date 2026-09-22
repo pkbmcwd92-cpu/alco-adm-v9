@@ -185,7 +185,9 @@ export function validateAssessmentPlan(
   }
 
   // 5. KKTP Criteria References Check
-  if (plan.criterionIds && plan.criterionIds.length > 0 && context.assessmentCriteria) {
+  if (plan.criterionIds && plan.criterionIds.length > 0 && !context.assessmentCriteria) {
+    errors.push('Rencana Asesmen merujuk KKTP tetapi sumber kriteria tidak tersedia.');
+  } else if (plan.criterionIds && plan.criterionIds.length > 0 && context.assessmentCriteria) {
     const criteriaById = new Map(context.assessmentCriteria.map((c) => [c.id, c]));
     const invalidCriteria = plan.criterionIds.filter((cid) => !criteriaById.has(cid));
     if (invalidCriteria.length > 0) {
@@ -599,6 +601,28 @@ export function deriveAutoDraftAssessmentPlan(
 ): DeriveAutoDraftAssessmentPlanResult {
   const warnings: string[] = [];
   const setting = params.academicSetting;
+  const merdekaTpBlocked = isMerdeka(setting) &&
+    (!params.tp || params.tp.workflowStatus !== 'SIAP' || params.tp.needsReview === true);
+
+  if (merdekaTpBlocked) {
+    const emptyDraft = createEmptyAssessmentPlan({
+      academicSettingId: setting.id,
+      workspaceId: params.workspaceId,
+      title: params.title || 'Draf Rencana Asesmen',
+    });
+    return {
+      plan: emptyDraft,
+      status: 'CANNOT_DRAFT',
+      resolutionStatus: 'NO_TP',
+      hasCriteria: false,
+      warnings: ['TP canonical Kurikulum Merdeka belum SIAP atau masih memerlukan review.'],
+      recommendations: {
+        instruments: [],
+        suggestedPurpose: params.purpose || 'FORMATIVE',
+        suggestedTiming: params.timing || 'POST',
+      },
+    };
+  }
 
   // 1. Kumpulkan objectives kanonikal
   let objectives: { id: string; code: string; statement: string; competence?: string; contentScope?: string }[] = [];
@@ -781,6 +805,10 @@ export function generateAutoDraftPlansFromCanonicalContext(params: {
   }
 
   const newPlans: AssessmentPlan[] = [];
+
+  if (isMerdeka(params.academicSetting) && (!params.tp || params.tp.workflowStatus !== 'SIAP' || params.tp.needsReview === true)) {
+    return [];
+  }
 
   if (isMerdeka(params.academicSetting) && params.tp?.items) {
     for (const item of params.tp.items) {

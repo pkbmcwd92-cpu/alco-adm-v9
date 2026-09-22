@@ -92,6 +92,8 @@ async function runRegressionTests() {
       { id: 'tp-1', code: 'TP-1', statement: 'Menganalisis fotosintesis pada tumbuhan', competence: 'Menganalisis', contentScope: 'Fotosintesis', p3Dimensions: [], order: 1 },
       { id: 'tp-2', code: 'TP-2', statement: 'Memahami siklus air dan dampaknya', competence: 'Memahami', contentScope: 'Siklus Air', p3Dimensions: [], order: 2 },
     ],
+    workflowStatus: 'SIAP',
+    needsReview: false,
     updatedAt: new Date().toISOString(),
   };
 
@@ -104,6 +106,8 @@ async function runRegressionTests() {
       approach: 'rubrik',
       indicators: ['Menjelaskan fotosintesis'],
       levels: [],
+      workflowStatus: 'SIAP',
+      needsReview: false,
       updatedAt: new Date().toISOString(),
     },
   ];

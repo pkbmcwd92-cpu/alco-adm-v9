@@ -129,6 +129,12 @@ export function resolveAssessmentGenerationSpec(
       severity: 'BLOCKING',
       message: `Rencana Asesmen "${assessmentPlan.title || planId}" belum berstatus SIAP (status saat ini: ${assessmentPlan.workflowStatus || 'DRAFT'}).`,
     });
+  } else if (assessmentPlan.needsReview) {
+    issues.push({
+      code: 'ASSESSMENT_PLAN_NEEDS_REVIEW',
+      severity: 'BLOCKING',
+      message: `Rencana Asesmen "${assessmentPlan.title || planId}" masih memerlukan peninjauan ulang.`,
+    });
   }
 
   // 3. Resolusi Kurikulum Eksplisit
@@ -202,6 +208,12 @@ export function resolveAssessmentGenerationSpec(
         code: 'OBJECTIVE_SOURCE_MISSING',
         severity: 'BLOCKING',
         message: 'Sumber data Tujuan Pembelajaran (TP) kanonikal tidak tersedia untuk Kurikulum Merdeka.',
+      });
+    } else if (tp.workflowStatus !== 'SIAP' || tp.needsReview) {
+      issues.push({
+        code: 'OBJECTIVE_SOURCE_NOT_READY',
+        severity: 'BLOCKING',
+        message: 'Sumber data Tujuan Pembelajaran (TP) kanonikal belum SIAP atau masih memerlukan review.',
       });
     } else {
       for (const targetId of planTpIds) {
@@ -297,6 +309,13 @@ export function resolveAssessmentGenerationSpec(
             code: 'DANGLING_CRITERION_REF',
             severity: 'BLOCKING',
             message: `Referensi Kriteria/KKTP dengan ID "${critId}" tidak ditemukan pada data asesmen.`,
+            criterionId: critId,
+          });
+        } else if (foundCrit.workflowStatus !== 'SIAP' || foundCrit.needsReview) {
+          issues.push({
+            code: 'CRITERION_SOURCE_NOT_READY',
+            severity: 'BLOCKING',
+            message: `Kriteria/KKTP dengan ID "${critId}" belum SIAP atau masih memerlukan review.`,
             criterionId: critId,
           });
         } else {
