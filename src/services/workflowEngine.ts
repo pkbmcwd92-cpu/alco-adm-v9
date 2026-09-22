@@ -20,7 +20,7 @@ import {
   K13KKM,
   ProfileWorkspaceData,
 } from '../types';
-import { isK13, isMerdeka, getCurriculumTypeFromSetting } from './curriculumRouter';
+import { isK13, isMerdeka, getCurriculumTypeFromSetting, validateAcademicSettingReadiness } from './curriculumRouter';
 import { findSubjectByNameOrAlias, findSubjectByCode } from '../data/curriculum/subjects';
 import { resolveCurriculumContext, resolveSubjectInput } from '../data/curriculum/resolver';
 import { ResolvedCurriculumContext } from '../data/curriculum/types';
@@ -239,29 +239,33 @@ export function validateWorkflowDependencies(
   const k13Analysis = workspaceData.k13Analysis;
   const k13KKM = workspaceData.k13KKM;
 
-  const isK13Active = academicSetting ? isK13(academicSetting) : false;
+  const academicReadiness = validateAcademicSettingReadiness(academicSetting);
+  const isAcademicComplete = academicReadiness.valid;
+  const isProfileComplete = !!profile?.name?.trim();
+  const curriculumType = getCurriculumTypeFromSetting(academicSetting);
+  const isK13Active = curriculumType === 'K13';
 
   // Step States initial map
   const stepStates: Record<WorkflowStepId, WorkflowStepState> = {
     profile: {
       id: 'profile',
-      status: profile?.name?.trim() ? 'COMPLETE' : 'IN_PROGRESS',
+      status: isProfileComplete ? 'COMPLETE' : 'IN_PROGRESS',
       isBlocked: false,
-      isComplete: !!profile?.name?.trim(),
+      isComplete: isProfileComplete,
       isStale: false,
     },
     academic: {
       id: 'academic',
-      status: academicSetting?.subject && academicSetting?.grade ? 'COMPLETE' : 'IN_PROGRESS',
-      isBlocked: !profile?.name?.trim(),
-      isComplete: !!(academicSetting?.subject && academicSetting?.grade),
+      status: isAcademicComplete ? 'COMPLETE' : 'IN_PROGRESS',
+      isBlocked: !isProfileComplete,
+      isComplete: isAcademicComplete,
       isStale: false,
     },
-    cp: { id: 'cp', status: 'READY', isBlocked: false, isComplete: false, isStale: false },
+    cp: { id: 'cp', status: 'BLOCKED', isBlocked: true, isComplete: false, isStale: false },
     'cp-analysis': { id: 'cp-analysis', status: 'BLOCKED', isBlocked: true, isComplete: false, isStale: false },
     tp: { id: 'tp', status: 'BLOCKED', isBlocked: true, isComplete: false, isStale: false },
     atp: { id: 'atp', status: 'BLOCKED', isBlocked: true, isComplete: false, isStale: false },
-    'k13-kd': { id: 'k13-kd', status: 'READY', isBlocked: false, isComplete: false, isStale: false },
+    'k13-kd': { id: 'k13-kd', status: 'BLOCKED', isBlocked: true, isComplete: false, isStale: false },
     'k13-indikator': { id: 'k13-indikator', status: 'BLOCKED', isBlocked: true, isComplete: false, isStale: false },
     'k13-tujuan': { id: 'k13-tujuan', status: 'BLOCKED', isBlocked: true, isComplete: false, isStale: false },
     'k13-kkm': { id: 'k13-kkm', status: 'BLOCKED', isBlocked: true, isComplete: false, isStale: false },
@@ -269,7 +273,7 @@ export function validateWorkflowDependencies(
   };
 
   // Base Profile & Academic Validation
-  if (!profile?.name?.trim()) {
+  if (!isProfileComplete) {
     issues.push({
       severity: 'ERROR',
       module: 'profile',
@@ -278,14 +282,14 @@ export function validateWorkflowDependencies(
     });
   }
 
-  if (!academicSetting?.subject || !academicSetting?.grade) {
+  if (!isAcademicComplete) {
     issues.push({
       severity: 'ERROR',
       module: 'academic',
       code: 'ACADEMIC_SETTING_INCOMPLETE',
-      message: 'Pengaturan Kelas & Mata Pelajaran belum lengkap.',
+      message: academicReadiness.errors[0] || 'Pengaturan Data Pembelajaran belum lengkap.',
     });
-    stepStates.academic.isBlocked = !stepStates.profile.isComplete;
+    stepStates.academic.isBlocked = !isProfileComplete;
   }
 
   let kktpState: {
@@ -302,7 +306,7 @@ export function validateWorkflowDependencies(
     hasOrphans: false,
   };
 
-  if (isK13Active) {
+  if (curriculumType === 'K13') {
     // ==========================================
     // K13 WORKFLOW VALIDATION
     // ==========================================
@@ -354,7 +358,7 @@ export function validateWorkflowDependencies(
       isStale: false,
       reason: !hasTujuanIndikator ? 'Memerlukan Tujuan Pembelajaran & Indikator K13' : undefined,
     };
-  } else {
+  } else if (curriculumType === 'KURIKULUM_MERDEKA') {
     // ==========================================
     // KURIKULUM MERDEKA WORKFLOW VALIDATION
     // ==========================================
@@ -620,6 +624,32 @@ export function validateWorkflowDependencies(
       isStale: isATPStale || isTPStale || isKKTPStale,
       reason: !isTPDataValid ? 'Memerlukan TP dan Alur ATP untuk modul administrasi lengkap' : undefined,
     };
+  } else {
+    // Unresolved / unknown curriculum: all downstream branches stay BLOCKED!
+    stepStates.cp.isBlocked = true;
+    stepStates.cp.status = 'BLOCKED';
+    stepStates['cp-analysis'].isBlocked = true;
+    stepStates['cp-analysis'].status = 'BLOCKED';
+    stepStates.tp.isBlocked = true;
+    stepStates.tp.status = 'BLOCKED';
+    stepStates.atp.isBlocked = true;
+    stepStates.atp.status = 'BLOCKED';
+    stepStates['k13-kd'].isBlocked = true;
+    stepStates['k13-kd'].status = 'BLOCKED';
+    stepStates['k13-indikator'].isBlocked = true;
+    stepStates['k13-indikator'].status = 'BLOCKED';
+    stepStates['k13-tujuan'].isBlocked = true;
+    stepStates['k13-tujuan'].status = 'BLOCKED';
+    stepStates['k13-kkm'].isBlocked = true;
+    stepStates['k13-kkm'].status = 'BLOCKED';
+    stepStates.admin.isBlocked = true;
+    stepStates.admin.status = 'BLOCKED';
+    issues.push({
+      severity: 'ERROR',
+      module: 'academic',
+      code: 'CURRICULUM_UNRESOLVED',
+      message: 'Kurikulum belum ditentukan atau tidak dikenali.',
+    });
   }
 
   const hasErrors = issues.some((i) => i.severity === 'ERROR');

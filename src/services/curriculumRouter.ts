@@ -51,6 +51,66 @@ export function isK13(
   return getCurriculumTypeFromSetting(setting) === 'K13';
 }
 
+export interface AcademicSettingReadinessResult {
+  valid: boolean;
+  curriculumType?: CurriculumType;
+  errors: string[];
+}
+
+/**
+ * Validates whether an AcademicSetting has all mandatory fields completed and resolved.
+ * Must be resolved to either 'K13' or 'KURIKULUM_MERDEKA'. Unknown/unsupported are invalid.
+ * Mandatory fields:
+ * - curriculum resolved (K13 or KURIKULUM_MERDEKA)
+ * - academicYear non-empty
+ * - semester non-empty / valid
+ * - level non-empty
+ * - grade non-empty
+ * - subject non-empty
+ */
+export function validateAcademicSettingReadiness(
+  setting?: AcademicSetting | null
+): AcademicSettingReadinessResult {
+  const errors: string[] = [];
+  if (!setting) {
+    return {
+      valid: false,
+      errors: ['Data Pembelajaran belum diisi.'],
+    };
+  }
+
+  const curriculumType = getCurriculumTypeFromSetting(setting);
+  if (!curriculumType) {
+    errors.push('Pilih kurikulum terlebih dahulu.');
+  }
+
+  if (!setting.academicYear || !setting.academicYear.trim()) {
+    errors.push('Pilih tahun ajaran terlebih dahulu.');
+  }
+
+  if (!setting.semester || !setting.semester.trim()) {
+    errors.push('Pilih semester terlebih dahulu.');
+  }
+
+  if (!setting.level || !setting.level.trim()) {
+    errors.push('Pilih jenjang pendidikan terlebih dahulu.');
+  }
+
+  if (!setting.grade || !setting.grade.trim()) {
+    errors.push('Pilih tingkat/kelas terlebih dahulu.');
+  }
+
+  if (!setting.subject || !setting.subject.trim()) {
+    errors.push('Mata pelajaran tidak boleh kosong.');
+  }
+
+  return {
+    valid: errors.length === 0,
+    curriculumType: errors.length === 0 ? curriculumType : undefined,
+    errors,
+  };
+}
+
 /**
  * 01 Profil
  * 02 Data Pembelajaran

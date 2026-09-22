@@ -30,23 +30,28 @@ import {
 } from '../data/curriculumDefaults';
 import { getSubjectJP } from '../services/jpEngine';
 import { lookupOfficialWeeklyJP } from '../services/curriculumRules';
-import { isK13, isMerdeka, getCurriculumTypeFromSetting } from '../services/curriculumRouter';
+import {
+  isK13,
+  isMerdeka,
+  getCurriculumTypeFromSetting,
+  validateAcademicSettingReadiness,
+} from '../services/curriculumRouter';
 import { TeacherTeachingLoadModal } from './TeacherTeachingLoadModal';
 
 interface AcademicSettingsProps {
   setting?: AcademicSetting | null;
   profile?: TeacherProfile | null;
   workspace?: AdministrationWorkspace | null;
-  onSaveSetting: (setting: AcademicSetting, customWorkspaceName?: string) => boolean | Promise<boolean>;
-  onNextStep: () => void;
+  onSaveSetting: (setting: AcademicSetting, customWorkspaceName?: string) => boolean;
+  onNextStep: (savedSetting?: AcademicSetting) => void;
 }
 
 interface AcademicSettingsFormProps {
   setting: AcademicSetting;
   profile?: TeacherProfile | null;
   workspace?: AdministrationWorkspace | null;
-  onSaveSetting: (setting: AcademicSetting, customWorkspaceName?: string) => boolean | Promise<boolean>;
-  onNextStep: () => void;
+  onSaveSetting: (setting: AcademicSetting, customWorkspaceName?: string) => boolean;
+  onNextStep: (savedSetting?: AcademicSetting) => void;
 }
 
 /**
@@ -186,15 +191,17 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
     setErrorMessage(null);
   };
 
-  const handleSave = (e?: React.FormEvent): boolean => {
+  const handleSave = (e?: React.FormEvent): AcademicSetting | null => {
     if (e) e.preventDefault();
-    if (!formData.subject || !formData.subject.trim()) {
-      setErrorMessage('Mata pelajaran tidak boleh kosong.');
-      return false;
+
+    const readiness = validateAcademicSettingReadiness(formData);
+    if (!readiness.valid) {
+      setErrorMessage(readiness.errors.join('. ') || 'Lengkapi semua field wajib sebelum menyimpan.');
+      return null;
     }
 
     const derivedPhase = getPhaseFromGrade(formData.level, formData.grade);
-    const resolvedCurriculumType = getCurriculumTypeFromSetting({
+    const resolvedCurriculumType = readiness.curriculumType || getCurriculumTypeFromSetting({
       curriculum: formData.curriculum,
       curriculumType: formData.curriculumType,
     });
@@ -209,21 +216,21 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
     const saved = onSaveSetting(updated, workspaceName.trim() || undefined);
     if (!saved) {
       setErrorMessage('Gagal menyimpan pengaturan: Workspace tidak valid atau terjadi kesalahan.');
-      return false;
+      return null;
     }
 
     setErrorMessage(null);
     setSaveSuccessNotice(true);
     setShowUnsavedPrompt(false);
     setTimeout(() => setSaveSuccessNotice(false), 2500);
-    return true;
+    return updated;
   };
 
   const handleSaveAndContinue = (e: React.FormEvent) => {
     e.preventDefault();
-    const saved = handleSave();
-    if (saved) {
-      onNextStep();
+    const savedSetting = handleSave();
+    if (savedSetting) {
+      onNextStep(savedSetting);
     }
   };
 
@@ -231,7 +238,12 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
     if (isDirty) {
       setShowUnsavedPrompt(true);
     } else {
-      onNextStep();
+      const readiness = validateAcademicSettingReadiness(formData);
+      if (!readiness.valid) {
+        setErrorMessage(readiness.errors.join('. ') || 'Lengkapi dan simpan Data Pembelajaran sebelum melanjutkan.');
+        return;
+      }
+      onNextStep(formData);
     }
   };
 
@@ -717,31 +729,63 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowUnsavedPrompt(false);
-                  onNextStep();
-                }}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
-              >
-                Abaikan & Lanjut
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const saved = handleSave();
-                  if (saved) {
-                    setShowUnsavedPrompt(false);
-                    onNextStep();
-                  }
-                }}
-                className="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 shadow-sm transition cursor-pointer"
-              >
-                Simpan & Lanjut
-              </button>
-            </div>
+            {(() => {
+              const storedReadiness = validateAcademicSettingReadiness(setting);
+              return (
+                <>
+                  {!storedReadiness.valid && (
+                    <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 space-y-1">
+                      <p className="font-semibold">Pengaturan tersimpan belum lengkap:</p>
+                      <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-700">
+                        {storedReadiness.errors.map((err, i) => (
+                          <li key={i}>{err}</li>
+                        ))}
+                      </ul>
+                      <p className="text-[11px] text-amber-900 font-medium pt-1">
+                        Lengkapi dan simpan Data Pembelajaran sebelum melanjutkan.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                    {storedReadiness.valid ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowUnsavedPrompt(false);
+                          onNextStep(setting);
+                        }}
+                        className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                      >
+                        Abaikan & Lanjut
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        title="Lengkapi dan simpan Data Pembelajaran sebelum melanjutkan."
+                        className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 bg-slate-100 cursor-not-allowed opacity-60"
+                      >
+                        Abaikan & Lanjut
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const savedSetting = handleSave();
+                        if (savedSetting) {
+                          setShowUnsavedPrompt(false);
+                          onNextStep(savedSetting);
+                        }
+                      }}
+                      className="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 shadow-sm transition cursor-pointer"
+                    >
+                      Simpan & Lanjut
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

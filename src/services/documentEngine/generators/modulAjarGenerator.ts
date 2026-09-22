@@ -38,20 +38,13 @@ export async function generateModulAjar(context: DocumentGenerationContext): Pro
   // 1. Resolve canonical LearningPlan
   let plan: LearningPlan | undefined = undefined;
   if (context.documentMode === 'blank') {
-    const candidate =
-      (context.learningPlans || []).find((p) => p.id === context.activeLearningPlanId) ||
-      (context.learningPlans && context.learningPlans.length > 0 ? context.learningPlans[0] : undefined);
-    if (candidate) {
-      plan = candidate;
-    } else {
-      plan = createEmptyLearningPlan({
-        academicSetting,
-        curriculumType: getCurriculumTypeFromSetting(academicSetting),
-        tpIds: [],
-        atpItemIds: [],
-        context: { tp, atp },
-      });
-    }
+    plan = createEmptyLearningPlan({
+      academicSetting,
+      curriculumType: getCurriculumTypeFromSetting(academicSetting),
+      tpIds: [],
+      atpItemIds: [],
+      context: { tp, atp },
+    });
   } else {
     const resolved = resolveCanonicalLearningPlan(context);
     if (resolved.error || !resolved.plan) {

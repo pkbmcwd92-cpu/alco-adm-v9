@@ -62,7 +62,7 @@ import { ATPManager } from './components/ATPManager';
 import { K13Manager } from './components/administration/K13Manager';
 import { AdministrationHub } from './components/administration/AdministrationHub';
 import { BackupModal } from './components/BackupModal';
-import { isK13, getCurriculumTypeFromSetting } from './services/curriculumRouter';
+import { isK13, getCurriculumTypeFromSetting, validateAcademicSettingReadiness } from './services/curriculumRouter';
 import { Plus, Copy, Trash2, X, FolderPlus, AlertCircle } from 'lucide-react';
 import { GRADE_PHASE_MAP, SUBJECT_OPTIONS } from './data/curriculumDefaults';
 import { APP_BUILD_ID } from './config/buildInfo';
@@ -449,17 +449,20 @@ export function App() {
               profile={activeProfile}
               workspace={activeWorkspace}
               onSaveSetting={handleSaveAcademicSetting}
-              onNextStep={() => {
-                const curType = getCurriculumTypeFromSetting(activeAcademicSetting);
-                if (curType === 'K13') {
-                  setCurrentStep('k13-kd');
-                } else if (curType === 'KURIKULUM_MERDEKA') {
-                  setCurrentStep('cp');
-                } else {
+              onNextStep={(savedSetting?: AcademicSetting) => {
+                const effectiveSetting = savedSetting || activeAcademicSetting;
+                const readiness = validateAcademicSettingReadiness(effectiveSetting);
+                if (!readiness.valid || !readiness.curriculumType) {
                   setAppNotice({
                     type: 'warning',
-                    message: 'Pilih dan simpan Kurikulum yang valid (Kurikulum Merdeka atau Kurikulum 2013) sebelum melanjutkan.',
+                    message: readiness.errors[0] || 'Pilih dan simpan Kurikulum yang valid (Kurikulum Merdeka atau Kurikulum 2013) sebelum melanjutkan.',
                   });
+                  return;
+                }
+                if (readiness.curriculumType === 'K13') {
+                  setCurrentStep('k13-kd');
+                } else if (readiness.curriculumType === 'KURIKULUM_MERDEKA') {
+                  setCurrentStep('cp');
                 }
               }}
             />
