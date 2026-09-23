@@ -706,6 +706,51 @@ async function runRegressionSuite() {
   assert(partialResult.generatedPackage !== undefined, 'Case 30: Generated package created for valid partial units');
   assert(partialResult.generatedPackage?.workflowStatus === 'DRAFT', 'Case 30: Package remains DRAFT');
 
+  const partialPackage =
+    partialResult.generatedPackage!;
+
+  const partialGeneratedBlueprint =
+    partialPackage.blueprintItems.find(
+      (bp) =>
+        bp.coverageUnitId ===
+        unit0.coverageUnitId
+    );
+
+  const partialMissingBlueprint =
+    partialPackage.blueprintItems.find(
+      (bp) =>
+        bp.coverageUnitId ===
+        unit1.coverageUnitId
+    );
+
+  assert(
+    partialGeneratedBlueprint !== undefined,
+    'B.1.2c Case 1: Successfully generated coverage keeps its blueprint'
+  );
+
+  assert(
+    partialMissingBlueprint === undefined,
+    'B.1.2c Case 2: Failed coverage does NOT receive synthetic blueprint linkage'
+  );
+
+  const generatedCoverageIds =
+    new Set(
+      partialResult.generatedUnits.map(
+        (u) => u.coverageUnitId
+      )
+    );
+
+  assert(
+    partialPackage.blueprintItems.every(
+      (bp) =>
+        !!bp.coverageUnitId &&
+        generatedCoverageIds.has(
+          bp.coverageUnitId
+        )
+    ),
+    'B.1.2c Case 3: Every blueprint in PARTIAL package comes from an actually generated coverage unit'
+  );
+
   // ----------------------------------------------------
   // SECTION 5: SUCCESSFUL FULL GENERATION & DETERMINISTIC MAPPING
   // ----------------------------------------------------
@@ -770,6 +815,31 @@ async function runRegressionSuite() {
   assert(pkg.provenance?.generatedBy === 'AI', 'Case 36: Package provenance generatedBy is AI');
   assert(pkg.blueprintItems.length === 2, 'Case 37: Exactly 2 blueprint items created');
   assert(pkg.blueprintItems[0].status === 'DRAFT', 'Case 38: Blueprint item status is DRAFT');
+
+  const fullGeneratedCoverageIds =
+    new Set(
+      fullResult.generatedUnits.map(
+        (u) => u.coverageUnitId
+      )
+    );
+
+  const fullBlueprintCoverageIds =
+    new Set(
+      fullResult.generatedPackage!.blueprintItems
+        .map((bp) => bp.coverageUnitId)
+        .filter(Boolean)
+    );
+
+  assert(
+    fullGeneratedCoverageIds.size ===
+      fullBlueprintCoverageIds.size &&
+      [...fullGeneratedCoverageIds].every(
+        (id) =>
+          fullBlueprintCoverageIds.has(id)
+      ),
+    'B.1.2c Case 10: Full generation retains one blueprint for every generated coverage'
+  );
+
   assert(pkg.instruments.length === 1, 'Case 39: 1 Written Test instrument created');
 
   const writtenInst = pkg.instruments[0] as any;
@@ -932,6 +1002,70 @@ async function runRegressionSuite() {
       (id) => performanceAspectIds.has(id)
     ),
     'B.1.2b Case 3: PERFORMANCE blueprint references only actual aspect IDs'
+  );
+
+  // Shared PERFORMANCE Instrument partial generation test (B.1.2c)
+  const sharedPerfUnits =
+    perfContract.units.filter(
+      (u) =>
+        u.instrumentType === 'PERFORMANCE'
+    );
+
+  assert(
+    sharedPerfUnits.length >= 2,
+    'B.1.2c setup: shared PERFORMANCE contract has at least two coverage units'
+  );
+
+  const sharedPartialProvider =
+    new MockAIProvider(() =>
+      JSON.stringify([
+        {
+          coverageUnitId:
+            sharedPerfUnits[0].coverageUnitId,
+          taskPrompt:
+            'Lakukan aktivitas praktik pertama.',
+        },
+      ])
+    );
+
+  const sharedPartialResult =
+    await generateAssessmentPackageDraft({
+      generationPlan: planPerf,
+      provider: sharedPartialProvider,
+    });
+
+  assert(
+    sharedPartialResult.status === 'PARTIAL',
+    'B.1.2c Case 4: Shared-instrument missing coverage remains PARTIAL'
+  );
+
+  const sharedPartialPackage =
+    sharedPartialResult.generatedPackage!;
+
+  assert(
+    sharedPartialPackage.instruments.some(
+      (inst) =>
+        inst.type === 'PERFORMANCE'
+    ),
+    'B.1.2c Case 5: Successful PERFORMANCE coverage still creates its instrument'
+  );
+
+  assert(
+    sharedPartialPackage.blueprintItems.some(
+      (bp) =>
+        bp.coverageUnitId ===
+        sharedPerfUnits[0].coverageUnitId
+    ),
+    'B.1.2c Case 6: Successful shared-instrument coverage has blueprint'
+  );
+
+  assert(
+    !sharedPartialPackage.blueprintItems.some(
+      (bp) =>
+        bp.coverageUnitId ===
+        sharedPerfUnits[1].coverageUnitId
+    ),
+    'B.1.2c Case 7: Missing shared-instrument coverage does not borrow instrument linkage'
   );
 
   // Plan with Observation Instrument

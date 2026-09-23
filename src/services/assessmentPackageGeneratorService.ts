@@ -1945,6 +1945,17 @@ export function mapGeneratedUnitsToAssessmentPackage(
     const itemIds = coverageToItemIds.get(cu.coverageUnitId) || [];
     const generatedForUnit = validatedUnits.filter((u) => u.coverageUnitId === cu.coverageUnitId);
 
+    // PARTIAL GENERATION FAIL-CLOSED:
+    // A GenerationContract unit without any validated generated content
+    // must NOT become a blueprint item with synthetic linkage.
+    //
+    // Missing generated content is represented by ABSENCE of blueprint.
+    // Coverage validation will deterministically report
+    // MISSING_PLANNED_COVERAGE.
+    if (generatedForUnit.length === 0) {
+      return;
+    }
+
     const expectedInstrumentId =
       createDeterministicInstrumentId(
         pkgId,

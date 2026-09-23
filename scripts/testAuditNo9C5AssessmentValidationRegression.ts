@@ -1435,6 +1435,85 @@ async function runAll60Tests() {
     );
   });
 
+  // Test 63 — Missing planned coverage in PARTIAL package fails deterministically (Patch B.1.2c)
+  await test('63. Missing planned coverage in PARTIAL package fails deterministically (Patch B.1.2c)', () => {
+    const partialCoveragePlan: AssessmentGenerationPlan = {
+      ...validPlan,
+      coverageUnits: [
+        {
+          id: 'cu-perf-a',
+          objectiveRefId: 'tp-1',
+          criterionId: 'crit-1',
+          allocationUnit: 'TASK',
+          instrumentType: 'PERFORMANCE',
+          recommendedCount: 1,
+          provenance: [],
+          status: 'RESOLVED',
+          issues: [],
+        },
+        {
+          id: 'cu-perf-b',
+          objectiveRefId: 'tp-2',
+          criterionId: 'crit-1',
+          allocationUnit: 'TASK',
+          instrumentType: 'PERFORMANCE',
+          recommendedCount: 1,
+          provenance: [],
+          status: 'RESOLVED',
+          issues: [],
+        },
+      ],
+    };
+
+    const partialCoveragePackage: AssessmentPackage = {
+      ...validPackage,
+      blueprintItems: [
+        {
+          id: 'bp-perf-a',
+          coverageUnitId: 'cu-perf-a',
+          objectiveRefId: 'tp-1',
+          criterionId: 'crit-1',
+          instrumentType: 'PERFORMANCE',
+          instrumentId: 'inst-perf-shared',
+          instrumentItemIds: ['asp-perf-a-1'],
+          order: 1,
+        },
+      ],
+      instruments: [
+        {
+          id: 'inst-perf-shared',
+          type: 'PERFORMANCE',
+          task: 'Lakukan praktik.',
+          aspects: [
+            {
+              id: 'asp-perf-a-1',
+              label: 'Ketepatan',
+            },
+          ],
+        },
+      ],
+    };
+
+    const partialCoverageValidation = validateAssessmentCoverage(
+      partialCoveragePackage,
+      partialCoveragePlan
+    );
+
+    assert(
+      partialCoverageValidation.status === 'FAIL',
+      'B.1.2c Case 8: Missing planned coverage keeps validation in FAIL state'
+    );
+
+    assert(
+      partialCoverageValidation.findings.some(
+        (f) =>
+          f.code === 'MISSING_PLANNED_COVERAGE' &&
+          f.coverageUnitId === 'cu-perf-b'
+      ),
+      'B.1.2c Case 9: Missing generated coverage is reported as MISSING_PLANNED_COVERAGE'
+    );
+  });
+
   console.log(`\n=== ALL ${passedCount} AUDIT 9C.5 REGRESSION TESTS PASSED PERFECTLY! ===`);
 }
 
