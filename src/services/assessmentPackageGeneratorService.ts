@@ -1526,22 +1526,29 @@ export function mapGeneratedUnitsToAssessmentPackage(
           const taskUnit = u as GeneratedTaskUnit;
           const aspId = createDeterministicAspectId(instId, uIdx);
 
-          const covItems = coverageToItemIds.get(u.coverageUnitId) || [];
-          covItems.push(aspId);
-          coverageToItemIds.set(u.coverageUnitId, covItems);
-
           if (!combinedTask) {
             combinedTask = taskUnit.taskPrompt || taskUnit.instructions || taskUnit.taskTitle || taskUnit.expectedDeliverable;
           }
 
-          if (taskUnit.aspects && taskUnit.aspects.length > 0) {
+          const covItems =
+            coverageToItemIds.get(u.coverageUnitId) || [];
+
+          if (
+            taskUnit.aspects &&
+            taskUnit.aspects.length > 0
+          ) {
             taskUnit.aspects.forEach((asp, aIdx) => {
+              const actualAspectId =
+                `${aspId}-${aIdx + 1}`;
+
               aspects.push({
-                id: `${aspId}-${aIdx + 1}`,
+                id: actualAspectId,
                 label: asp.label,
                 description: asp.description,
                 weight: asp.weight,
               });
+
+              covItems.push(actualAspectId);
             });
           } else {
             aspects.push({
@@ -1549,7 +1556,14 @@ export function mapGeneratedUnitsToAssessmentPackage(
               label: taskUnit.taskTitle,
               description: taskUnit.instructions,
             });
+
+            covItems.push(aspId);
           }
+
+          coverageToItemIds.set(
+            u.coverageUnitId,
+            covItems
+          );
 
           // Rubric Draft
           if (taskUnit.rubricDraft && !rubricId) {
@@ -1616,9 +1630,8 @@ export function mapGeneratedUnitsToAssessmentPackage(
           const obsUnit = u as GeneratedObservationUnit;
           const aspId = createDeterministicAspectId(instId, uIdx);
 
-          const covItems = coverageToItemIds.get(u.coverageUnitId) || [];
-          covItems.push(aspId);
-          coverageToItemIds.set(u.coverageUnitId, covItems);
+          const covItems =
+            coverageToItemIds.get(u.coverageUnitId) || [];
 
           if (!recordingScheme && obsUnit.recordingScheme) {
             recordingScheme = obsUnit.recordingScheme;
@@ -1628,12 +1641,22 @@ export function mapGeneratedUnitsToAssessmentPackage(
           }
 
           obsUnit.aspects.forEach((asp, aIdx) => {
+            const actualAspectId =
+              `${aspId}-${aIdx + 1}`;
+
             aspects.push({
-              id: `${aspId}-${aIdx + 1}`,
+              id: actualAspectId,
               label: asp.label,
               indicator: asp.indicator,
             });
+
+            covItems.push(actualAspectId);
           });
+
+          coverageToItemIds.set(
+            u.coverageUnitId,
+            covItems
+          );
 
           if (obsUnit.rubricDraft && !rubricId) {
             rubricId = createDeterministicRubricId(instId, 1);
@@ -1678,14 +1701,9 @@ export function mapGeneratedUnitsToAssessmentPackage(
         let scoringGuideId: string | undefined;
         let portfolioInstructions: string | undefined;
 
-        units.forEach((u, uIdx) => {
+        units.forEach((u) => {
           if (u.allocationUnit !== 'EVIDENCE') return;
           const evUnit = u as GeneratedEvidenceUnit;
-          const reqId = `ev-${instId}-${uIdx + 1}`;
-
-          const covItems = coverageToItemIds.get(u.coverageUnitId) || [];
-          covItems.push(reqId);
-          coverageToItemIds.set(u.coverageUnitId, covItems);
 
           if (!portfolioInstructions && evUnit.instructions) {
             portfolioInstructions = evUnit.instructions;
@@ -1748,14 +1766,9 @@ export function mapGeneratedUnitsToAssessmentPackage(
         let scoringGuideId: string | undefined;
         let assignmentInstructions: string | undefined;
 
-        units.forEach((u, uIdx) => {
+        units.forEach((u) => {
           if (u.allocationUnit !== 'TASK') return;
           const taskUnit = u as GeneratedTaskUnit;
-          const aspId = createDeterministicAspectId(instId, uIdx);
-
-          const covItems = coverageToItemIds.get(u.coverageUnitId) || [];
-          covItems.push(aspId);
-          coverageToItemIds.set(u.coverageUnitId, covItems);
 
           if (!assignmentInstructions) {
             assignmentInstructions = taskUnit.instructions || taskUnit.taskPrompt || taskUnit.taskTitle || taskUnit.expectedDeliverable;
@@ -1812,14 +1825,9 @@ export function mapGeneratedUnitsToAssessmentPackage(
         let scoringGuideId: string | undefined;
         let projectBrief: string | undefined;
 
-        units.forEach((u, uIdx) => {
+        units.forEach((u) => {
           if (u.allocationUnit !== 'TASK') return;
           const taskUnit = u as GeneratedTaskUnit;
-          const aspId = createDeterministicAspectId(instId, uIdx);
-
-          const covItems = coverageToItemIds.get(u.coverageUnitId) || [];
-          covItems.push(aspId);
-          coverageToItemIds.set(u.coverageUnitId, covItems);
 
           if (!projectBrief) {
             projectBrief = taskUnit.taskPrompt || taskUnit.instructions || taskUnit.taskTitle || taskUnit.expectedDeliverable;
@@ -1876,14 +1884,9 @@ export function mapGeneratedUnitsToAssessmentPackage(
         let scoringGuideId: string | undefined;
         let productBrief: string | undefined;
 
-        units.forEach((u, uIdx) => {
+        units.forEach((u) => {
           if (u.allocationUnit !== 'TASK') return;
           const taskUnit = u as GeneratedTaskUnit;
-          const aspId = createDeterministicAspectId(instId, uIdx);
-
-          const covItems = coverageToItemIds.get(u.coverageUnitId) || [];
-          covItems.push(aspId);
-          coverageToItemIds.set(u.coverageUnitId, covItems);
 
           if (!productBrief) {
             productBrief = taskUnit.taskPrompt || taskUnit.instructions || taskUnit.taskTitle || taskUnit.expectedDeliverable;
@@ -1942,8 +1945,25 @@ export function mapGeneratedUnitsToAssessmentPackage(
     const itemIds = coverageToItemIds.get(cu.coverageUnitId) || [];
     const generatedForUnit = validatedUnits.filter((u) => u.coverageUnitId === cu.coverageUnitId);
 
+    const expectedInstrumentId =
+      createDeterministicInstrumentId(
+        pkgId,
+        cu.instrumentType
+      );
+
+    const resolvedInstrumentId =
+      instruments.some(
+        (inst) => inst.id === expectedInstrumentId
+      )
+        ? expectedInstrumentId
+        : undefined;
+
     const bpItem: AssessmentBlueprintItem = {
-      id: createDeterministicBlueprintId(pkgId, cu.coverageUnitId),
+      id: createDeterministicBlueprintId(
+        pkgId,
+        cu.coverageUnitId
+      ),
+      coverageUnitId: cu.coverageUnitId,
       objectiveRefId: cu.objectiveRefId,
       criterionId: cu.criterionId,
       assessmentIndicator:
@@ -1955,6 +1975,7 @@ export function mapGeneratedUnitsToAssessmentPackage(
         generatedForUnit[0]?.materialOrContext ||
         undefined,
       instrumentType: cu.instrumentType,
+      instrumentId: resolvedInstrumentId,
       instrumentItemIds: itemIds,
       order: idx + 1,
       status: 'DRAFT',

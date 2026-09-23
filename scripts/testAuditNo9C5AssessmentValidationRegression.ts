@@ -57,13 +57,14 @@ const mockValidationContext: AssessmentPackageValidationContext = {
     instruments: [{ type: 'WRITTEN_TEST' }],
   } as any,
   tp: {
+    workflowStatus: 'SIAP',
     items: [
       { id: 'tp-1', text: 'Memahami ekosistem' },
       { id: 'tp-2', text: 'Menganalisis jaring makanan' },
     ],
   } as any,
   assessmentCriteria: [
-    { id: 'crit-1', text: 'Kriteria 1' },
+    { id: 'crit-1', text: 'Kriteria 1', workflowStatus: 'SIAP' },
   ] as any,
 };
 
@@ -1286,6 +1287,152 @@ async function runAll60Tests() {
     const mismatchFinding = sec.findings.find((f) => f.code === 'COVERAGE_COUNT_MISMATCH');
     assert(!!mismatchFinding, 'Expected COVERAGE_COUNT_MISMATCH finding');
     assert(mismatchFinding!.message.includes('(2)'), 'Finding message must report actual count of 2');
+  });
+
+  // Test 61 — Multiple observation aspects remain one semantic coverage unit
+  await test('61. Multiple observation aspects remain one semantic coverage unit (Patch B.1.2b)', () => {
+    const observationCoveragePlan: AssessmentGenerationPlan = {
+      ...validPlan,
+      coverageUnits: [
+        {
+          id: 'cu-observation-1',
+          objectiveRefId: 'tp-1',
+          criterionId: 'crit-1',
+          allocationUnit: 'OBSERVATION',
+          instrumentType: 'OBSERVATION',
+          recommendedCount: 1,
+          provenance: [],
+          status: 'RESOLVED',
+          issues: [],
+        },
+      ],
+    };
+
+    const observationPackage: AssessmentPackage = {
+      ...validPackage,
+      blueprintItems: [
+        {
+          id: 'bp-observation-1',
+          coverageUnitId: 'cu-observation-1',
+          objectiveRefId: 'tp-1',
+          criterionId: 'crit-1',
+          instrumentType: 'OBSERVATION',
+          instrumentId: 'inst-observation-1',
+          instrumentItemIds: [
+            'asp-observation-1',
+            'asp-observation-2',
+          ],
+          order: 1,
+        },
+      ],
+      instruments: [
+        {
+          id: 'inst-observation-1',
+          type: 'OBSERVATION',
+          aspects: [
+            {
+              id: 'asp-observation-1',
+              label: 'Partisipasi',
+            },
+            {
+              id: 'asp-observation-2',
+              label: 'Ketepatan',
+            },
+          ],
+        },
+      ],
+    };
+
+    const observationCoverageResult = validateAssessmentCoverage(
+      observationPackage,
+      observationCoveragePlan
+    );
+
+    assert(
+      !observationCoverageResult.findings.some(
+        (f) =>
+          f.code ===
+          'COVERAGE_COUNT_MISMATCH'
+      ),
+      'B.1.2b: Multiple observation aspects remain one semantic coverage unit'
+    );
+
+    assert(
+      !observationCoverageResult.findings.some(
+        (f) =>
+          f.code ===
+            'MISSING_PLANNED_COVERAGE' ||
+          f.code ===
+            'MISSING_BLUEPRINT_COVERAGE_UNIT_ID'
+      ),
+      'B.1.2b: Observation coverage retains exact canonical blueprint linkage'
+    );
+  });
+
+  // Test 62 — ORAL_TEST is valid ITEM allocation semantics
+  await test('62. ORAL_TEST is valid ITEM allocation semantics (Patch B.1.2b)', () => {
+    const oralPlan: AssessmentGenerationPlan = {
+      ...validPlan,
+      coverageUnits: [
+        {
+          id: 'cu-oral-1',
+          objectiveRefId: 'tp-1',
+          criterionId: 'crit-1',
+          allocationUnit: 'ITEM',
+          instrumentType: 'ORAL_TEST',
+          recommendedCount: 1,
+          provenance: [],
+          status: 'RESOLVED',
+          issues: [],
+        },
+      ],
+    };
+
+    const oralPackage: AssessmentPackage = {
+      ...validPackage,
+      blueprintItems: [
+        {
+          id: 'bp-oral-1',
+          coverageUnitId: 'cu-oral-1',
+          objectiveRefId: 'tp-1',
+          criterionId: 'crit-1',
+          instrumentType: 'ORAL_TEST',
+          instrumentId: 'inst-oral-1',
+          instrumentItemIds: ['item-oral-1'],
+          order: 1,
+        },
+      ],
+      instruments: [
+        {
+          id: 'inst-oral-1',
+          type: 'ORAL_TEST',
+          title: 'Tes Lisan',
+          items: [
+            {
+              id: 'item-oral-1',
+              prompt: 'Sebutkan bagian-bagian sel!',
+              blueprintItemId: 'bp-oral-1',
+              coverageUnitId: 'cu-oral-1',
+              order: 1,
+            },
+          ],
+        },
+      ],
+    };
+
+    const oralCoverageResult = validateAssessmentCoverage(
+      oralPackage,
+      oralPlan
+    );
+
+    assert(
+      !oralCoverageResult.findings.some(
+        (f) =>
+          f.code ===
+          'ALLOCATION_SEMANTICS_MISMATCH'
+      ),
+      'B.1.2b: ORAL_TEST is valid ITEM allocation semantics'
+    );
   });
 
   console.log(`\n=== ALL ${passedCount} AUDIT 9C.5 REGRESSION TESTS PASSED PERFECTLY! ===`);

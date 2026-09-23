@@ -217,38 +217,53 @@ export function validateAssessmentCoverage(
             isUnresolved = true;
           }
         } else if (allocationUnit === 'OBSERVATION') {
-          const matchedAspectIds = new Set<string>();
-          let totalAspectsInResolvedInstruments = 0;
-          let aspectsHaveLinkageInfo = false;
+          let explicitObservationCount = 0;
+          let observationLinkageFound = false;
 
-          for (const { bpItem, instrument } of resolvedInstruments) {
-            if (instrument.type === 'OBSERVATION' && Array.isArray(instrument.aspects)) {
-              totalAspectsInResolvedInstruments += instrument.aspects.length;
-              for (const aspect of instrument.aspects) {
-                if (aspect.blueprintItemId || aspect.coverageUnitId) {
-                  aspectsHaveLinkageInfo = true;
-                }
-                if (aspect.blueprintItemId === bpItem.id || aspect.coverageUnitId === planUnit.id) {
-                  matchedAspectIds.add(aspect.id);
-                }
-              }
-              if (instrument.blueprintItemId === bpItem.id || instrument.coverageUnitId === planUnit.id || bpItem.instrumentId === instrument.id) {
-                aspectsHaveLinkageInfo = true;
-                if (instrument.aspects.length > 0) {
-                  instrument.aspects.forEach((asp: any) => matchedAspectIds.add(asp.id));
-                }
-              }
+          for (
+            const { bpItem, instrument }
+            of resolvedInstruments
+          ) {
+            if (instrument.type !== 'OBSERVATION') {
+              continue;
+            }
+
+            const explicitInstrumentLink =
+              bpItem.instrumentId === instrument.id ||
+              instrument.blueprintItemId === bpItem.id ||
+              instrument.coverageUnitId === planUnit.id;
+
+            const blueprintAspectIds =
+              Array.isArray(bpItem.instrumentItemIds)
+                ? bpItem.instrumentItemIds
+                : [];
+
+            const actualAspectIds = new Set(
+              Array.isArray(instrument.aspects)
+                ? instrument.aspects.map(
+                    (asp: any) => asp.id
+                  )
+                : []
+            );
+
+            const hasExplicitAspectLink =
+              blueprintAspectIds.length > 0 &&
+              blueprintAspectIds.every(
+                (id: string) =>
+                  actualAspectIds.has(id)
+              );
+
+            if (
+              explicitInstrumentLink ||
+              hasExplicitAspectLink
+            ) {
+              explicitObservationCount += 1;
+              observationLinkageFound = true;
             }
           }
 
-          if (matchedAspectIds.size > 0) {
-            actualCount = matchedAspectIds.size;
-            hasDeterministicLinkage = true;
-          } else if (totalAspectsInResolvedInstruments === 0) {
-            actualCount = 0;
-            hasDeterministicLinkage = true;
-          } else if (aspectsHaveLinkageInfo) {
-            actualCount = 0;
+          if (observationLinkageFound) {
+            actualCount = explicitObservationCount;
             hasDeterministicLinkage = true;
           } else {
             isUnresolved = true;
@@ -385,7 +400,10 @@ function checkAllocationSemantics(
 ): boolean {
   switch (allocationUnit) {
     case 'ITEM':
-      return instrumentType === 'WRITTEN_TEST';
+      return (
+        instrumentType === 'WRITTEN_TEST' ||
+        instrumentType === 'ORAL_TEST'
+      );
     case 'TASK':
       return ['PERFORMANCE', 'PROJECT', 'PRODUCT', 'ASSIGNMENT'].includes(instrumentType);
     case 'EVIDENCE':

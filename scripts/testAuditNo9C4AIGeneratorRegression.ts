@@ -904,6 +904,36 @@ async function runRegressionSuite() {
   assert(perfPkg.rubrics[0].criteria.length === 2, 'Case 52: Rubric has 2 criteria');
   assert(perfPkg.rubrics[0].scale.length === 4, 'Case 53: Rubric has 4 scale levels');
 
+  const perfBlueprint =
+    perfPkg.blueprintItems.find(
+      (bp) =>
+        bp.instrumentType === 'PERFORMANCE'
+    )!;
+
+  assert(
+    perfBlueprint.coverageUnitId ===
+      perfContract.units[0].coverageUnitId,
+    'B.1.2b Case 1: PERFORMANCE blueprint preserves exact coverageUnitId'
+  );
+
+  assert(
+    perfBlueprint.instrumentId === perfInst.id,
+    'B.1.2b Case 2: PERFORMANCE blueprint links exact instrumentId'
+  );
+
+  const performanceAspectIds = new Set(
+    (perfInst.aspects || []).map(
+      (asp: any) => asp.id
+    )
+  );
+
+  assert(
+    perfBlueprint.instrumentItemIds.every(
+      (id) => performanceAspectIds.has(id)
+    ),
+    'B.1.2b Case 3: PERFORMANCE blueprint references only actual aspect IDs'
+  );
+
   // Plan with Observation Instrument
   const mockPlanObs: AssessmentPlan = {
     ...mockPlanMatSiap,
@@ -1095,6 +1125,38 @@ async function runRegressionSuite() {
   const obsInst = obsResult.generatedPackage!.instruments[0] as any;
   assert(obsInst.type === 'OBSERVATION', 'Case 55: Instrument type is OBSERVATION');
   assert(obsInst.aspects.length === 2, 'Case 56: Observation instrument has 2 aspects');
+
+  const obsBlueprint =
+    obsResult.generatedPackage!.blueprintItems.find(
+      (bp) =>
+        bp.instrumentType === 'OBSERVATION'
+    )!;
+
+  assert(
+    obsBlueprint.coverageUnitId ===
+      obsContract.units[0].coverageUnitId,
+    'B.1.2b Case 4: OBSERVATION blueprint preserves exact coverageUnitId'
+  );
+
+  assert(
+    obsBlueprint.instrumentId === obsInst.id,
+    'B.1.2b Case 5: OBSERVATION blueprint links exact instrumentId'
+  );
+
+  const observationAspectIds = new Set(
+    (obsInst.aspects || []).map(
+      (asp: any) => asp.id
+    )
+  );
+
+  assert(
+    obsBlueprint.instrumentItemIds.length ===
+      obsInst.aspects.length &&
+      obsBlueprint.instrumentItemIds.every(
+        (id) => observationAspectIds.has(id)
+      ),
+    'B.1.2b Case 6: OBSERVATION blueprint references exact existing aspect IDs without dangling parent ID'
+  );
 
   // ----------------------------------------------------
   // SECTION 7: IMMUTABILITY OF INPUT OBJECTS
@@ -1609,6 +1671,14 @@ async function runRegressionSuite() {
   assert(projectInst?.projectBrief === 'Rancanglah mini proyek pengolahan sampah organik.', 'Case CD: projectBrief is non-empty string');
   assert(projectInst?.projectBrief !== '', 'Case CD: projectBrief is never empty string');
 
+  const projectBlueprint = projectResult.generatedPackage?.blueprintItems.find((bp) => bp.instrumentType === 'PROJECT')!;
+  assert(
+    projectBlueprint.coverageUnitId === projContractSec5.units[0].coverageUnitId &&
+      projectBlueprint.instrumentId === projectInst.id &&
+      projectBlueprint.instrumentItemIds.length === 0,
+    'B.1.2b Case 7: PROJECT blueprint uses explicit instrumentId without fake child IDs'
+  );
+
   // Case CE: PRODUCT never maps empty productBrief
   const mockPlanProdSec5: AssessmentPlan = {
     ...mockPlanMatSiap,
@@ -1649,6 +1719,14 @@ async function runRegressionSuite() {
   assert(productInst?.productBrief.includes('Buatlah poster'), 'Case CE: productBrief is non-empty string');
   assert(productInst?.productBrief !== '', 'Case CE: productBrief is never empty string');
 
+  const productBlueprint = productResult.generatedPackage?.blueprintItems.find((bp) => bp.instrumentType === 'PRODUCT')!;
+  assert(
+    productBlueprint.coverageUnitId === productContractSec5.units[0].coverageUnitId &&
+      productBlueprint.instrumentId === productInst.id &&
+      productBlueprint.instrumentItemIds.length === 0,
+    'B.1.2b Case 8: PRODUCT blueprint uses explicit instrumentId without fake child IDs'
+  );
+
   // Case CF: PERFORMANCE never maps empty task
   const perfFallbackProvider: AssessmentAIGenerationProvider = {
     generate: async () => ({
@@ -1683,6 +1761,14 @@ async function runRegressionSuite() {
   const assignInstItem = assignResult.generatedPackage?.instruments[0] as any;
   assert(assignInstItem?.instructions === 'Penugasan Mandiri', 'Case CG: Assignment instructions non-empty string derived from valid task content');
   assert(assignInstItem?.instructions !== '', 'Case CG: Assignment instructions is never empty string');
+
+  const assignBlueprint = assignResult.generatedPackage?.blueprintItems.find((bp) => bp.instrumentType === 'ASSIGNMENT')!;
+  assert(
+    assignBlueprint.coverageUnitId === assignContract.units[0].coverageUnitId &&
+      assignBlueprint.instrumentId === assignInstItem.id &&
+      assignBlueprint.instrumentItemIds.length === 0,
+    'B.1.2b Case 9: ASSIGNMENT blueprint uses explicit instrumentId without fake child IDs'
+  );
 
   // Case CH: Portfolio instructions are not forced to empty string when missing
   const mockPlanPortSec5: AssessmentPlan = {
@@ -1741,6 +1827,14 @@ async function runRegressionSuite() {
 
   const portInst = portResult.generatedPackage?.instruments[0] as any;
   assert(portInst?.instructions === undefined, 'Case CH: Portfolio instructions are undefined when missing (NOT forced to empty string)');
+
+  const portBlueprint = portResult.generatedPackage?.blueprintItems.find((bp) => bp.instrumentType === 'PORTFOLIO')!;
+  assert(
+    portBlueprint.coverageUnitId === portContractSec5.units[0].coverageUnitId &&
+      portBlueprint.instrumentId === portInst.id &&
+      portBlueprint.instrumentItemIds.length === 0,
+    'B.1.2b Case 10: PORTFOLIO blueprint uses explicit instrumentId without fake child IDs'
+  );
 
   // Case CI: Empty evidence requirement rejected
   const portUnit0 = portContractSec5.units[0];
