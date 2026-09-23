@@ -491,17 +491,116 @@ ATURAN GENERASI KETAT:
    - JANGAN mengklaim konten sintetis buatan AI sebagai dokumen resmi (OFFICIAL) atau regulasi pemerintah.
    - JANGAN menandai draf sebagai SIAP atau FINAL (seluruh keluaran adalah DRAFT).
 
-2. SEMANTIK ALOKASI & FORMAT INSTRUMEN:
-   - ITEM (WRITTEN_TEST / ORAL_TEST):
-     * Pilihan Ganda: Buat pokok soal (stem) yang jelas, 1 kunci jawaban terbaik, opsi pengecoh homogen dan masuk akal, tanpa petunjuk jawaban (clues).
-     * Uraian/Esai: Buat instruksi soal dan pedoman penskoran (scoring guide draft).
-   - TASK (PERFORMANCE / ASSIGNMENT / PROJECT / PRODUCT):
-     * Buat deskripsi tugas/instruksi kerja nyata, aspek yang dinilai, dan draf rubrik.
-     * JANGAN mengubah tugas kinerja menjadi soal pilihan ganda atau tes tertulis biasa.
-   - EVIDENCE (PORTFOLIO):
-     * Buat persyaratan bukti karya dan kriteria evaluasi/rubrik portofolio.
-   - OBSERVATION (OBSERVATION):
-     * Buat aspek pengamatan dan indikator perilaku yang dapat diamati secara konkret.
+2. SEMANTIK ALOKASI & KONTRAK FIELD OUTPUT:
+
+   A. ITEM — WRITTEN_TEST
+   Gunakan field:
+   - coverageUnitId: WAJIB.
+   - itemType: WAJIB. Pilihan valid: MULTIPLE_CHOICE, MULTIPLE_SELECT, TRUE_FALSE, SHORT_ANSWER, ESSAY, MATCHING, CATEGORY_RESPONSE.
+   - prompt: WAJIB, berupa teks soal.
+   - options: WAJIB untuk MULTIPLE_CHOICE dan MULTIPLE_SELECT, minimal 2 opsi.
+   - stimulus: opsional.
+   - proposedAnswer: opsional tetapi sangat dianjurkan jika jawaban dapat ditentukan.
+   - scoringGuideDraft: gunakan bila bentuk soal memerlukan pedoman penskoran.
+
+   Untuk pilihan ganda:
+   {
+     "coverageUnitId": "...",
+     "itemType": "MULTIPLE_CHOICE",
+     "prompt": "...",
+     "options": [
+       { "text": "...", "isCorrect": true },
+       { "text": "...", "isCorrect": false }
+     ]
+   }
+
+   B. ITEM — ORAL_TEST
+   Gunakan field:
+   - coverageUnitId: WAJIB.
+   - itemType: gunakan SHORT_ANSWER atau ESSAY.
+   - prompt: WAJIB, berupa pertanyaan lisan.
+   - proposedAnswer: opsional sebagai respons yang diharapkan.
+   JANGAN mengubah tes lisan menjadi MULTIPLE_CHOICE kecuali kontrak/konteks secara eksplisit memerlukannya.
+
+   C. TASK — PERFORMANCE / ASSIGNMENT / PROJECT / PRODUCT
+   Gunakan field:
+   - coverageUnitId: WAJIB.
+   - taskPrompt: WAJIB, berupa instruksi tugas yang dapat dilakukan murid.
+   - taskTitle: opsional.
+   - instructions: opsional.
+   - expectedDeliverable: opsional.
+   - aspects: opsional, berupa array objek dengan field "label" dan dapat memiliki "description" atau "weight".
+   - rubricDraft: opsional.
+   - scoringGuideDraft: opsional.
+
+   Contoh:
+   {
+     "coverageUnitId": "...",
+     "taskTitle": "Praktik Gerak Dasar",
+     "taskPrompt": "Lakukan rangkaian gerak sesuai instruksi guru.",
+     "instructions": "Lakukan secara tertib dan aman.",
+     "aspects": [
+       {
+         "label": "Ketepatan gerakan",
+         "description": "Gerakan sesuai contoh."
+       }
+     ]
+   }
+
+   JANGAN menggunakan field generik seperti:
+   - "task"
+   - "description" sebagai pengganti taskPrompt
+   - "activity"
+   - "content"
+
+   sebagai field utama tugas.
+
+   D. EVIDENCE — PORTFOLIO
+   Gunakan field:
+   - coverageUnitId: WAJIB.
+   - evidenceRequirements: WAJIB, array string minimal 1 bukti.
+   - instructions: opsional.
+   - rubricDraft: opsional.
+   - scoringGuideDraft: opsional.
+
+   Contoh:
+   {
+     "coverageUnitId": "...",
+     "instructions": "Kumpulkan bukti hasil pembelajaran.",
+     "evidenceRequirements": [
+       "Dokumentasi hasil praktik",
+       "Catatan refleksi murid"
+     ]
+   }
+
+   E. OBSERVATION — OBSERVATION
+   Gunakan field:
+   - coverageUnitId: WAJIB.
+   - aspects: WAJIB, array minimal 1 objek.
+   - setiap aspek WAJIB memiliki "label".
+   - "indicator" sangat dianjurkan agar perilaku dapat diamati.
+   - instructions: opsional.
+   - recordingScheme: opsional.
+   - rubricDraft: opsional.
+
+   Contoh:
+   {
+     "coverageUnitId": "...",
+     "instructions": "Amati murid selama aktivitas.",
+     "aspects": [
+       {
+         "label": "Partisipasi aktif",
+         "indicator": "Murid mengikuti aktivitas sesuai instruksi."
+       }
+     ]
+   }
+
+   JANGAN menggunakan:
+   - "observations"
+   - "criteria"
+   - "indicators"
+
+   sebagai pengganti field utama "aspects".
 
 3. KOGNISI & BAHASA:
    - Pertahankan cognitiveDemand jika diberikan pada kontrak (RECALL_UNDERSTAND, APPLY, ANALYZE_REASON, EVALUATE_CREATE).
@@ -514,7 +613,17 @@ Keluarkan HANYA JSON murni berupa array objek unit generasi.
 Setiap objek WAJIB memiliki coverageUnitId yang identik dengan kontrak.
 Fokuskan keluaran pada konten asesmen yang perlu dibuat.
 Metadata canonical objectiveRefId, criterionId, instrumentType, dan allocationUnit tidak wajib diulang.
-Jangan menambahkan teks pembuka, penutup, atau penjelasan di luar JSON.`;
+Jangan menambahkan teks pembuka, penutup, atau penjelasan di luar JSON.
+
+Ikuti nama field JSON PERSIS sebagaimana kontrak semantic di atas.
+JANGAN mengganti nama field dengan sinonim.
+Untuk setiap coverage unit, gunakan bentuk output yang sesuai dengan allocationUnit pada kontrak:
+- ITEM → itemType + prompt
+- TASK → taskPrompt
+- EVIDENCE → evidenceRequirements
+- OBSERVATION → aspects
+
+Jika beberapa instrumen berbeda berada dalam satu permintaan, hasilkan semua objek tersebut dalam SATU array JSON dan gunakan bentuk field masing-masing sesuai allocationUnit.`;
 
   const userPrompt = `Kontrak Generasi Asesmen:
 Konteks Kurikulum: ${contract.curriculumContext.curriculumType || 'Kurikulum Merdeka'}, Tingkat: ${contract.curriculumContext.schoolLevel || ''}, Kelas: ${contract.curriculumContext.grade ? 'Kelas ' + contract.curriculumContext.grade : ''}, Fase: ${contract.curriculumContext.phase || ''}
@@ -744,7 +853,11 @@ export function parseAndValidateRawAIResponse(
     // Semantic Family Validation
     switch (contractUnit.allocationUnit) {
       case 'ITEM': {
-        const itemType = candidate.itemType || 'MULTIPLE_CHOICE';
+        const itemType =
+          candidate.itemType ||
+          (contractUnit.instrumentType === 'ORAL_TEST'
+            ? 'SHORT_ANSWER'
+            : 'MULTIPLE_CHOICE');
         if (!VALID_WRITTEN_ITEM_TYPES.has(itemType)) {
           issues.push({
             code: 'INVALID_ITEM_TYPE',

@@ -360,6 +360,21 @@ async function runRegressionSuite() {
   assert(systemPrompt.includes('JANGAN mengubah atau mengarang Tujuan Pembelajaran'), 'Case 22: System prompt forbids inventing curriculum');
   assert(userPrompt.includes('Kelas 4'), 'Case 23: User prompt includes grade context');
 
+  assert(
+    systemPrompt.includes('taskPrompt') &&
+      systemPrompt.includes('evidenceRequirements') &&
+      systemPrompt.includes('aspects'),
+    'B.1.2 Case 1: Prompt exposes exact semantic JSON field names required by parser'
+  );
+
+  assert(
+    systemPrompt.includes('ITEM → itemType + prompt') &&
+      systemPrompt.includes('TASK → taskPrompt') &&
+      systemPrompt.includes('EVIDENCE → evidenceRequirements') &&
+      systemPrompt.includes('OBSERVATION → aspects'),
+    'B.1.2 Case 2: Prompt maps every allocation family to exact output fields'
+  );
+
   // ----------------------------------------------------
   // B.1 INTEGRATION: MULTI-INSTRUMENT COVERAGE
   // ----------------------------------------------------
@@ -824,6 +839,27 @@ async function runRegressionSuite() {
     'B.1.1 Case 4: PERFORMANCE candidate without canonical metadata echo hydrates to TASK'
   );
 
+  const b12MinimalPerformance = parseAndValidateRawAIResponse(
+    JSON.stringify([
+      {
+        coverageUnitId:
+          perfContract.units[0].coverageUnitId,
+        taskPrompt:
+          'Lakukan rangkaian gerak lokomotor secara tertib dan aman.',
+      },
+    ]),
+    perfContract
+  );
+
+  assert(
+    b12MinimalPerformance.validatedUnits.length === 1 &&
+      b12MinimalPerformance.validatedUnits[0]
+        .allocationUnit === 'TASK' &&
+      b12MinimalPerformance.validatedUnits[0]
+        .instrumentType === 'PERFORMANCE',
+    'B.1.2 Case 3: Minimal structured PERFORMANCE TASK is accepted'
+  );
+
   const perfProvider = new MockAIProvider(() =>
     JSON.stringify([
       {
@@ -912,6 +948,125 @@ async function runRegressionSuite() {
       hydratedObservationResult.validatedUnits[0]
         .allocationUnit === 'OBSERVATION',
     'B.1.1 Case 5: OBSERVATION candidate without canonical metadata echo hydrates correctly'
+  );
+
+  const b12MinimalObservation = parseAndValidateRawAIResponse(
+    JSON.stringify([
+      {
+        coverageUnitId:
+          obsContract.units[0].coverageUnitId,
+        aspects: [
+          {
+            label: 'Partisipasi aktif',
+            indicator:
+              'Murid mengikuti aktivitas sesuai instruksi.',
+          },
+        ],
+      },
+    ]),
+    obsContract
+  );
+
+  assert(
+    b12MinimalObservation.validatedUnits.length === 1 &&
+      b12MinimalObservation.validatedUnits[0]
+        .allocationUnit === 'OBSERVATION',
+    'B.1.2 Case 4: Minimal structured OBSERVATION is accepted'
+  );
+
+  // Oral Test default itemType
+  const mockPlanOral: AssessmentPlan = {
+    ...mockPlanMatSiap,
+    id: 'plan-oral-1',
+    instruments: [{ id: 'inst-oral-ref', type: 'ORAL_TEST', label: 'Tes Lisan' }],
+  };
+  const specOral = resolveAssessmentGenerationSpec({
+    academicSetting: mockAcademicSettingSD4,
+    assessmentPlan: mockPlanOral,
+    tp: mockTPMat,
+    assessmentCriteria: mockCriteriaMat,
+  });
+  const planOral = resolveAssessmentGenerationPlan({ generationSpec: specOral });
+  const oralContract = buildGenerationContract(planOral);
+
+  const oralResult = parseAndValidateRawAIResponse(
+    JSON.stringify([
+      {
+        coverageUnitId: oralContract.units[0].coverageUnitId,
+        prompt: 'Jelaskan dua contoh gerak lokomotor yang kamu ketahui.',
+      },
+    ]),
+    oralContract
+  );
+
+  assert(
+    oralResult.validatedUnits.length === 1 &&
+      oralResult.validatedUnits[0]
+        .instrumentType === 'ORAL_TEST' &&
+      oralResult.validatedUnits[0]
+        .allocationUnit === 'ITEM' &&
+      (oralResult.validatedUnits[0] as any)
+        .itemType === 'SHORT_ANSWER',
+    'B.1.2 Case 6: ORAL_TEST without itemType defaults to SHORT_ANSWER, not MULTIPLE_CHOICE'
+  );
+
+  // Multi-instrument real runtime shape: PERFORMANCE + OBSERVATION
+  const mockMultiPerfObsPlan: AssessmentPlan = {
+    ...mockPlanMatSiap,
+    id: 'plan-perf-obs-multi',
+    instruments: [
+      { id: 'inst-perf-multi', type: 'PERFORMANCE', label: 'Praktik' },
+      { id: 'inst-obs-multi', type: 'OBSERVATION', label: 'Observasi' },
+    ],
+  };
+  const specMultiPerfObs = resolveAssessmentGenerationSpec({
+    academicSetting: mockAcademicSettingSD4,
+    assessmentPlan: mockMultiPerfObsPlan,
+    tp: mockTPMat,
+    assessmentCriteria: mockCriteriaMat,
+  });
+  const planMultiPerfObs = resolveAssessmentGenerationPlan({ generationSpec: specMultiPerfObs });
+  const contractMultiPerfObs = buildGenerationContract(planMultiPerfObs);
+
+  const performanceCoverage = contractMultiPerfObs.units.find(
+    (u) => u.instrumentType === 'PERFORMANCE'
+  )!;
+  const observationCoverage = contractMultiPerfObs.units.find(
+    (u) => u.instrumentType === 'OBSERVATION'
+  )!;
+
+  const multiPerfObsResult = parseAndValidateRawAIResponse(
+    JSON.stringify([
+      {
+        coverageUnitId:
+          performanceCoverage.coverageUnitId,
+        taskPrompt:
+          'Lakukan rangkaian gerak dasar sesuai instruksi.',
+      },
+      {
+        coverageUnitId:
+          observationCoverage.coverageUnitId,
+        aspects: [
+          {
+            label: 'Keterlibatan',
+            indicator:
+              'Murid mengikuti aktivitas secara aktif.',
+          },
+        ],
+      },
+    ]),
+    contractMultiPerfObs
+  );
+
+  assert(
+    multiPerfObsResult.validatedUnits.length === 2 &&
+      multiPerfObsResult.validatedUnits.some(
+        (u) => u.instrumentType === 'PERFORMANCE' && u.allocationUnit === 'TASK'
+      ) &&
+      multiPerfObsResult.validatedUnits.some(
+        (u) => u.instrumentType === 'OBSERVATION' && u.allocationUnit === 'OBSERVATION'
+      ),
+    'B.1.2 Case 7: Multi-instrument PERFORMANCE + OBSERVATION single response parses cleanly'
   );
 
   const obsProvider = new MockAIProvider(() =>
@@ -1543,6 +1698,26 @@ async function runRegressionSuite() {
   });
   const planPort = resolveAssessmentGenerationPlan({ generationSpec: specPortSec5 });
   const portContractSec5 = buildGenerationContract(planPort, teacherContext);
+
+  const b12MinimalPortfolio = parseAndValidateRawAIResponse(
+    JSON.stringify([
+      {
+        coverageUnitId:
+          portContractSec5.units[0].coverageUnitId,
+        evidenceRequirements: [
+          'Dokumentasi hasil belajar murid',
+        ],
+      },
+    ]),
+    portContractSec5
+  );
+
+  assert(
+    b12MinimalPortfolio.validatedUnits.length === 1 &&
+      b12MinimalPortfolio.validatedUnits[0]
+        .allocationUnit === 'EVIDENCE',
+    'B.1.2 Case 5: Minimal structured PORTFOLIO EVIDENCE is accepted'
+  );
 
   const portNoInstructionsProvider: AssessmentAIGenerationProvider = {
     generate: async () => ({

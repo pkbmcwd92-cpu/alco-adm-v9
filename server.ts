@@ -110,6 +110,210 @@ function cleanAndParseJSON(rawText?: string, fallback: any = {}): any {
   }
 }
 
+const assessmentAICommonProperties = {
+  coverageUnitId: {
+    type: Type.STRING,
+    description: 'ID coverage unit. Wajib sama persis dengan GenerationContract.',
+  },
+  assessmentIndicator: {
+    type: Type.STRING,
+  },
+  materialOrContext: {
+    type: Type.STRING,
+  },
+  rubricDraft: {
+    type: Type.OBJECT,
+    properties: {
+      title: { type: Type.STRING },
+      criteria: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            label: { type: Type.STRING },
+            indicator: { type: Type.STRING },
+            weight: { type: Type.NUMBER },
+          },
+          required: ['label'],
+        },
+      },
+      scale: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            label: { type: Type.STRING },
+            score: { type: Type.NUMBER },
+            descriptor: { type: Type.STRING },
+            order: { type: Type.NUMBER },
+          },
+          required: ['label'],
+        },
+      },
+    },
+  },
+  scoringGuideDraft: {
+    type: Type.OBJECT,
+    properties: {
+      instructions: { type: Type.STRING },
+      maxScore: { type: Type.NUMBER },
+    },
+  },
+};
+
+const assessmentAIResponseSchema = {
+  type: Type.ARRAY,
+  items: {
+    anyOf: [
+      {
+        type: Type.OBJECT,
+        properties: {
+          ...assessmentAICommonProperties,
+          itemType: {
+            type: Type.STRING,
+            enum: [
+              'MULTIPLE_CHOICE',
+              'MULTIPLE_SELECT',
+              'TRUE_FALSE',
+              'SHORT_ANSWER',
+              'ESSAY',
+              'MATCHING',
+              'CATEGORY_RESPONSE',
+            ],
+          },
+          prompt: {
+            type: Type.STRING,
+          },
+          stimulus: {
+            type: Type.STRING,
+          },
+          stimulusSource: {
+            type: Type.STRING,
+          },
+          options: {
+            type: Type.ARRAY,
+            minItems: 2,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                text: { type: Type.STRING },
+                isCorrect: { type: Type.BOOLEAN },
+              },
+              required: ['text'],
+            },
+          },
+          proposedAnswer: {
+            type: Type.OBJECT,
+            properties: {
+              answerType: {
+                type: Type.STRING,
+                enum: [
+                  'EXACT',
+                  'OPTION',
+                  'MULTIPLE_OPTION',
+                  'EXPECTED_RESPONSE',
+                  'MATCHING',
+                  'CATEGORY_RESPONSE',
+                ],
+              },
+              value: { type: Type.STRING },
+              optionIndices: {
+                type: Type.ARRAY,
+                items: { type: Type.INTEGER },
+              },
+              explanation: { type: Type.STRING },
+            },
+          },
+        },
+        required: ['coverageUnitId', 'itemType', 'prompt'],
+      },
+
+      {
+        type: Type.OBJECT,
+        properties: {
+          ...assessmentAICommonProperties,
+          taskTitle: {
+            type: Type.STRING,
+          },
+          taskPrompt: {
+            type: Type.STRING,
+          },
+          instructions: {
+            type: Type.STRING,
+          },
+          expectedDeliverable: {
+            type: Type.STRING,
+          },
+          aspects: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                label: { type: Type.STRING },
+                description: { type: Type.STRING },
+                weight: { type: Type.NUMBER },
+              },
+              required: ['label'],
+            },
+          },
+        },
+        required: ['coverageUnitId', 'taskPrompt'],
+      },
+
+      {
+        type: Type.OBJECT,
+        properties: {
+          ...assessmentAICommonProperties,
+          instructions: {
+            type: Type.STRING,
+          },
+          evidenceRequirements: {
+            type: Type.ARRAY,
+            minItems: 1,
+            items: {
+              type: Type.STRING,
+            },
+          },
+        },
+        required: [
+          'coverageUnitId',
+          'evidenceRequirements',
+        ],
+      },
+
+      {
+        type: Type.OBJECT,
+        properties: {
+          ...assessmentAICommonProperties,
+          instructions: {
+            type: Type.STRING,
+          },
+          recordingScheme: {
+            type: Type.STRING,
+          },
+          aspects: {
+            type: Type.ARRAY,
+            minItems: 1,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                label: { type: Type.STRING },
+                indicator: { type: Type.STRING },
+              },
+              required: ['label'],
+            },
+          },
+        },
+        required: [
+          'coverageUnitId',
+          'aspects',
+        ],
+      },
+    ],
+  },
+};
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
@@ -901,6 +1105,7 @@ app.post('/api/ai/generate-assessment-package', async (req, res) => {
         config: {
           systemInstruction: systemPrompt,
           responseMimeType: 'application/json',
+          responseSchema: assessmentAIResponseSchema,
         },
       });
 
