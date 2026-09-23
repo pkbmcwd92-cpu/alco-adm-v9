@@ -17,6 +17,9 @@ import {
   compareDocumentSnapshots,
   isContextDriftedFromSnapshot,
 } from '../src/services/documentEngine/snapshot';
+import {
+  getLocalTodayDocumentDate,
+} from '../src/services/documentDateService';
 import { DocumentGenerationContext } from '../src/services/documentEngine/types';
 import { SchoolData, TeacherProfile, AcademicSetting } from '../src/types';
 
@@ -33,6 +36,10 @@ async function runSnapshotRegressionTest() {
   console.log('===========================================================');
   console.log('🧪 RUNNING AUDIT & REGRESSION TEST: DocumentSnapshot Immutability');
   console.log('===========================================================');
+
+  // TEST C1 — LOCAL TODAY
+  const localToday = getLocalTodayDocumentDate(new Date(2026, 8, 23, 23, 30, 0));
+  assert(localToday === '2026-09-23', 'Document date default uses local calendar components');
 
   // Baseline School Data (Principal A)
   const initialSchool: SchoolData = {
@@ -128,6 +135,16 @@ async function runSnapshotRegressionTest() {
     students: [
       { id: 'std-1', name: 'Ahmad Dahlan', nisn: '0123456789', gender: 'L', academicSettingId: 'acad-001' },
     ],
+    workspace: {
+      id: 'ws-001',
+      profileId: 'prof-001',
+      schoolId: 'sch-001',
+      academicSettingId: 'acad-001',
+      name: 'Pendidikan Pancasila Kelas 4',
+      documentDate: '2026-07-15',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
   };
 
   // -------------------------------------------------------------
@@ -135,6 +152,8 @@ async function runSnapshotRegressionTest() {
   // -------------------------------------------------------------
   console.log('\n--- LANGKAH 1: Membuat Dokumen Pertama (Dokumen A) ---');
   const snapshotA = createDocumentSnapshot(contextA, 'docx', 'data');
+
+  assert(snapshotA.documentDate === '2026-07-15', 'Snapshot freezes workspace documentDate');
 
   assert(snapshotA.schoolName === 'SD Negeri 01 Teladan', 'Dokumen A mencatat Satuan Pendidikan');
   assert(snapshotA.npsn === '20109988', 'Dokumen A mencatat NPSN');
@@ -231,6 +250,55 @@ async function runSnapshotRegressionTest() {
   assert(
     effectiveContextForDocA.school.principalNip === '196805121994031005',
     'resolveEffectiveContext() mengunci NIP Kepala Sekolah ke snapshot Dokumen 1'
+  );
+
+  // C3: Historical snapshot documentDate is authoritative
+  const contextAfterDateChange = {
+    ...contextA,
+    workspace: {
+      ...contextA.workspace!,
+      documentDate: '2026-08-01',
+    },
+  };
+
+  const resolvedHistorical = resolveEffectiveContext(contextAfterDateChange, snapshotA);
+  assert(
+    resolvedHistorical.documentDate === '2026-07-15',
+    'Historical snapshot documentDate is authoritative'
+  );
+
+  // C4: New snapshot uses latest workspace documentDate
+  const snapshotB_date = createDocumentSnapshot(contextAfterDateChange, 'docx', 'data');
+  assert(
+    snapshotB_date.documentDate === '2026-08-01',
+    'New snapshot uses latest workspace documentDate'
+  );
+
+  // C5: Legacy snapshot without date must not inherit live workspace date
+  const legacySnapshot = {
+    ...snapshotA,
+    documentDate: undefined,
+    formattedDocumentDate: undefined,
+  };
+
+  const contextWithCurrentDate = {
+    ...contextA,
+    workspace: {
+      ...contextA.workspace!,
+      documentDate: '2026-09-23',
+    },
+  };
+
+  const resolvedLegacy = resolveEffectiveContext(contextWithCurrentDate, legacySnapshot);
+  assert(
+    resolvedLegacy.documentDate === undefined,
+    'Legacy historical snapshot without date must not inherit live workspace date'
+  );
+
+  // C6: generatedAt remains a technical timestamp
+  assert(
+    typeof snapshotA.generatedAt === 'string' && snapshotA.generatedAt.length > 0,
+    'generatedAt remains a technical timestamp'
   );
 
   console.log('\n===========================================================');

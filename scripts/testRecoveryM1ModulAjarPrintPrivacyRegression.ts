@@ -5,6 +5,7 @@ import {
   confirmLearningPlan,
 } from '../src/services/learningPlanService';
 import { generateModulAjar } from '../src/services/documentEngine/generators/modulAjarGenerator';
+import { formatDocumentDate } from '../src/services/documentDateService';
 import {
   CANONICAL_GRADUATE_PROFILE_DIMENSIONS,
   isCanonicalGraduateProfileDimension,
@@ -346,6 +347,7 @@ async function runM111RegressionSuite() {
     learningPlans: [completeSiapPlan],
     tp: mockTpData,
     atp: mockAtpData,
+    documentDate: '2030-01-15',
     skipDownload: true,
   });
 
@@ -357,8 +359,14 @@ async function runM111RegressionSuite() {
     `fileName: ${docxResult.fileName}`
   );
 
+  // E3: Date Format check
+  assert(
+    formatDocumentDate('2030-01-15') === '15 Januari 2030',
+    'Canonical document date formats deterministic future date'
+  );
+
   // Check 6: Deterministic DOCX privacy source regression
-  console.log('\n--- Check 6: DOCX Export Privacy Source Guard ---');
+  console.log('\n--- Check 6: DOCX Export Privacy Source Guard & Document Date Guards ---');
 
   const docxGeneratorPath = path.join(
     process.cwd(),
@@ -368,6 +376,17 @@ async function runM111RegressionSuite() {
   const docxGeneratorSource = fs.readFileSync(
     docxGeneratorPath,
     'utf-8'
+  );
+
+  // E1 & E2 Source guards
+  assert(
+    docxGeneratorSource.includes('context.documentDate'),
+    'Modul Ajar signoff must use canonical context.documentDate'
+  );
+
+  assert(
+    !docxGeneratorSource.includes('context.workspace?.documentDate || context.snapshot?.documentDate'),
+    'Modul Ajar must not resolve document date independently'
   );
 
   // Ignore comments so documentation words do not create false positives.

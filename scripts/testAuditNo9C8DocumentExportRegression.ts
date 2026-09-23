@@ -1156,6 +1156,131 @@ async function runAudit9C8Regression() {
     assert(!row.tpCodeAndStatement.includes('[]'), 'tpCodeAndStatement must not contain empty brackets []');
   });
 
+  // Test 24: Assessment inherits workspace.documentDate when context.documentDate is missing
+  await test('9C.8.24 — Assessment inherits workspace.documentDate when context.documentDate is missing', async () => {
+    const workspaceDateContext = {
+      school: mockSchool,
+      profile: mockProfile,
+      academicSetting: mockAcademicSetting,
+      tp: mockTP,
+      assessmentPlans: [mockPlan],
+      assessmentPackages: [mockValidSiapPackage],
+      documentDate: undefined,
+      workspace: {
+        id: 'ws-assessment-date',
+        profileId: 'teacher-1',
+        schoolId: 'school-1',
+        academicSettingId: 'setting-1',
+        name: 'Informatika Kelas 10',
+        documentDate: '2026-09-23',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    };
+
+    const snap = createAssessmentDocumentSnapshot(workspaceDateContext as any);
+    assert(snap.documentDate === '2026-09-23', 'Assessment inherits workspace.documentDate');
+  });
+
+  // Test 25: Live Assessment export documentDate precedence: options > context > workspace
+  await test('9C.8.25 — Live Assessment export documentDate precedence: options > context > workspace', async () => {
+    const precContext = {
+      school: mockSchool,
+      profile: mockProfile,
+      academicSetting: mockAcademicSetting,
+      tp: mockTP,
+      assessmentPlans: [mockPlan],
+      assessmentPackages: [mockValidSiapPackage],
+      documentDate: '2026-09-20',
+      workspace: {
+        id: 'ws-assessment-date',
+        profileId: 'teacher-1',
+        schoolId: 'school-1',
+        academicSettingId: 'setting-1',
+        name: 'Informatika Kelas 10',
+        documentDate: '2026-09-23',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    };
+
+    const snapWithOptions = createAssessmentDocumentSnapshot(precContext as any, {
+      documentMode: 'data',
+      documentDate: '2026-09-18',
+    });
+
+    assert(snapWithOptions.documentDate === '2026-09-18', 'Live precedence uses options.documentDate over context and workspace');
+  });
+
+  // Test 26: Historical Assessment snapshot date beats live options/context/workspace
+  await test('9C.8.26 — Historical Assessment snapshot date beats live options/context/workspace', async () => {
+    const historicalContext = {
+      school: mockSchool,
+      profile: mockProfile,
+      academicSetting: mockAcademicSetting,
+      tp: mockTP,
+      assessmentPlans: [mockPlan],
+      assessmentPackages: [mockValidSiapPackage],
+      documentDate: '2026-09-20',
+      workspace: {
+        id: 'ws-assessment-date',
+        profileId: 'teacher-1',
+        schoolId: 'school-1',
+        academicSettingId: 'setting-1',
+        name: 'Informatika Kelas 10',
+        documentDate: '2026-09-23',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      snapshot: {
+        documentDate: '2026-07-15',
+        formattedDocumentDate: '15 Juli 2026',
+      },
+    };
+
+    const snapHist = createAssessmentDocumentSnapshot(historicalContext as any, {
+      documentMode: 'data',
+      documentDate: '2026-09-18',
+    });
+
+    assert(snapHist.documentDate === '2026-07-15', 'Historical Assessment snapshot date beats live options/context/workspace');
+  });
+
+  // Test 27: Invalid calendar date in workspace blocks assessment snapshot creation
+  await test('9C.8.27 — Invalid calendar date in workspace blocks assessment snapshot creation', async () => {
+    const invalidDateCtx = {
+      school: mockSchool,
+      profile: mockProfile,
+      academicSetting: mockAcademicSetting,
+      tp: mockTP,
+      assessmentPlans: [mockPlan],
+      assessmentPackages: [mockValidSiapPackage],
+      documentDate: undefined,
+      workspace: {
+        id: 'ws-invalid-date',
+        profileId: 'teacher-1',
+        schoolId: 'school-1',
+        academicSettingId: 'setting-1',
+        name: 'Informatika Kelas 10',
+        documentDate: '2026-02-30',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    };
+
+    let threw = false;
+    try {
+      createAssessmentDocumentSnapshot(invalidDateCtx as any);
+    } catch (err: any) {
+      threw = true;
+      assert(
+        err.message.includes('Tanggal Dokumen') || err.message.includes('Pengaturan Administrasi'),
+        `Error message must mention Tanggal Dokumen or Pengaturan Administrasi: got "${err.message}"`
+      );
+    }
+    assert(threw, 'createAssessmentDocumentSnapshot must throw on invalid calendar date 2026-02-30');
+  });
+
   console.log(`\nAll ${passedCount} tests in Audit 9C.8 regression suite PASSED successfully!\n`);
 }
 
