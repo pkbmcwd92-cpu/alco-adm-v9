@@ -552,7 +552,7 @@ export async function generateModulAjar(context: DocumentGenerationContext): Pro
       school,
       profile,
       isBlankMode,
-      context.documentDate || context.workspace?.documentDate || context.snapshot?.documentDate
+      context.documentDate
     )
   );
 

@@ -123,7 +123,7 @@ export async function generateKKTP(context: DocumentGenerationContext): Promise<
   docChildren.push(new Paragraph({ spacing: { after: 220 } }));
 
   // Signatures
-  docChildren.push(...createSignoffBlock(school, profile, isBlankMode));
+  docChildren.push(...createSignoffBlock(school, profile, isBlankMode, context.documentDate));
 
   const doc = new Document({
     sections: [

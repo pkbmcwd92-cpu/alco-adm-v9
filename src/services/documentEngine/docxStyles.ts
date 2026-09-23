@@ -30,13 +30,23 @@ export const INDONESIAN_MONTHS = [
   'Desember',
 ];
 
-export function formatOfficialDate(school: SchoolData, customDate?: string): string {
-  const location = school.district?.replace(/^Kec\.\s*/i, '') || school.regency || school.village || 'Tempat';
-  const effectiveDate = resolveDocumentDate(customDate);
-  if (!effectiveDate) {
-    return `${location}, .....`;
+export function formatOfficialDate(
+  school: SchoolData,
+  documentDate?: string
+): string {
+  const location =
+    school.district?.replace(/^Kec\.\s*/i, '') ||
+    school.regency ||
+    school.village ||
+    'Tempat';
+
+  const formatted =
+    formatDocumentDate(documentDate);
+
+  if (!formatted) {
+    return '';
   }
-  const formatted = formatDocumentDate(effectiveDate);
+
   return `${location}, ${formatted}`;
 }
 
@@ -208,16 +218,21 @@ export function createSignoffBlock(
   isBlankMode: boolean = false,
   customDateString?: string
 ): (Paragraph | Table)[] {
-  let dateStr: string;
-  if (customDateString) {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(customDateString.trim())) {
-      dateStr = formatOfficialDate(school, customDateString.trim());
-    } else {
-      dateStr = customDateString;
-    }
-  } else {
-    dateStr = formatOfficialDate(school);
-  }
+  const location =
+    school.district?.replace(/^Kec\.\s*/i, '') ||
+    school.regency ||
+    school.village ||
+    'Tempat';
+
+  const formattedOfficialDate =
+    formatOfficialDate(
+      school,
+      customDateString
+    );
+
+  const dateStr =
+    formattedOfficialDate ||
+    `${location}, ....................`;
 
   const principalTitle = 'Kepala Sekolah';
   const teacherTitle = 'Guru Mata Pelajaran';

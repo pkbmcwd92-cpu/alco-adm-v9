@@ -1412,7 +1412,6 @@ async function runAll60Tests() {
               id: 'item-oral-1',
               prompt: 'Sebutkan bagian-bagian sel!',
               blueprintItemId: 'bp-oral-1',
-              coverageUnitId: 'cu-oral-1',
               order: 1,
             },
           ],

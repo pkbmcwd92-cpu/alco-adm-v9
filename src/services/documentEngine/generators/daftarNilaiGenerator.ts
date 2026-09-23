@@ -221,7 +221,7 @@ export async function generateDaftarNilai(context: DocumentGenerationContext): P
   }
 
   // Signatures
-  docChildren.push(...createSignoffBlock(school, profile, isBlankMode));
+  docChildren.push(...createSignoffBlock(school, profile, isBlankMode, context.documentDate));
 
   const doc = new Document({
     sections: [

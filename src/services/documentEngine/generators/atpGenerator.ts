@@ -193,7 +193,7 @@ export async function generateATP(context: DocumentGenerationContext): Promise<G
   docChildren.push(atpTable);
 
   // Sign-off
-  docChildren.push(...createSignoffBlock(school, profile));
+  docChildren.push(...createSignoffBlock(school, profile, context.documentMode === 'blank', context.documentDate));
 
   // Build Document
   const doc = new Document({

@@ -1023,7 +1023,6 @@ export interface WrittenAssessmentInstrument {
 export interface OralAssessmentItem {
   id: string;
   blueprintItemId?: string;
-  coverageUnitId?: string;
   prompt: string;
   expectedResponse?: string;
   order: number;
@@ -1052,7 +1051,6 @@ export interface PerformanceAssessmentInstrument {
   task: string;
   instructions?: string;
   blueprintItemId?: string;
-  coverageUnitId?: string;
   rubricId?: string;
   scoringGuideId?: string;
   aspects?: PerformanceAspect[];
@@ -1070,7 +1068,6 @@ export interface ObservationAssessmentInstrument {
   type: 'OBSERVATION';
   title?: string;
   instructions?: string;
-  coverageUnitId?: string;
   recordingScheme?: string;
   aspects: ObservationAspect[];
 }
@@ -1083,7 +1080,6 @@ export interface AssignmentAssessmentInstrument {
   instructions: string;
   expectedOutput?: string;
   blueprintItemId?: string;
-  coverageUnitId?: string;
   scoringGuideId?: string;
   rubricId?: string;
 }
@@ -1096,7 +1092,6 @@ export interface ProjectAssessmentInstrument {
   projectBrief: string;
   expectedDeliverable?: string;
   blueprintItemId?: string;
-  coverageUnitId?: string;
   rubricId?: string;
   scoringGuideId?: string;
 }
@@ -1109,7 +1104,6 @@ export interface ProductAssessmentInstrument {
   productBrief: string;
   expectedProduct?: string;
   blueprintItemId?: string;
-  coverageUnitId?: string;
   rubricId?: string;
   scoringGuideId?: string;
 }
@@ -1122,7 +1116,6 @@ export interface PortfolioAssessmentInstrument {
   instructions?: string;
   evidenceRequirements: string[];
   blueprintItemId?: string;
-  coverageUnitId?: string;
   rubricId?: string;
   scoringGuideId?: string;
 }
@@ -1130,8 +1123,6 @@ export interface PortfolioAssessmentInstrument {
 // Self / Peer Assessment
 export interface SelfPeerAssessmentItem {
   id: string;
-  blueprintItemId?: string;
-  coverageUnitId?: string;
   statement: string;
   category?: string;
 }

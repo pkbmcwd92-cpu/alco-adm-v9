@@ -968,7 +968,7 @@ export async function generatePdfDocument(
   }
 
   const styleProfile = type === 'MODUL_AJAR' ? 'FORMAL_NEUTRAL' : 'DEFAULT';
-  const dateString = formatOfficialDate(school);
+  const dateString = formatOfficialDate(school, context.documentDate);
 
   const builder = buildPdfFromOptions({
     orientation,

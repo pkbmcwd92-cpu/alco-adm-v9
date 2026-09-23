@@ -48,6 +48,38 @@ import {
   PdfTableColumn,
 } from './renderers/pdf/pdfRenderer';
 import { validateAssessmentPackage } from '../assessmentPackageService';
+import {
+  isValidDocumentDate,
+  resolveDocumentDate as resolveCanonicalDocumentDate,
+} from '../documentDateService';
+
+function resolveAssessmentDocumentDate(
+  context: DocumentGenerationContext,
+  options?: AssessmentExportOptions
+): string | undefined {
+  // Historical snapshot is authoritative.
+  if (context.snapshot) {
+    return resolveCanonicalDocumentDate(
+      context.snapshot.documentDate
+    );
+  }
+
+  if (options?.documentDate !== undefined) {
+    return resolveCanonicalDocumentDate(
+      options.documentDate
+    );
+  }
+
+  if (context.documentDate !== undefined) {
+    return resolveCanonicalDocumentDate(
+      context.documentDate
+    );
+  }
+
+  return resolveCanonicalDocumentDate(
+    context.workspace?.documentDate
+  );
+}
 
 /**
  * Format document date to formal Indonesian string.
@@ -258,7 +290,7 @@ export function createAssessmentDocumentSnapshot(
     school.district?.replace(/^Kec\.\s*/i, '') || school.regency || school.village || '';
 
   if (isBlankMode) {
-    const rawDate = options?.documentDate || context.documentDate || context.workspace?.documentDate || context.snapshot?.documentDate;
+    const rawDate = resolveAssessmentDocumentDate(context, options);
     const dateResult = rawDate ? formatDocumentDate(rawDate, location) : { rawDate: '', formattedDate: '' };
 
     const snapshot: AssessmentDocumentSnapshot = {
@@ -311,10 +343,11 @@ export function createAssessmentDocumentSnapshot(
   }
   const pkg = eligibility.package;
 
-  const rawDate = options?.documentDate || context.documentDate || context.workspace?.documentDate || context.snapshot?.documentDate;
-  if (!rawDate) {
+  const rawDate = resolveAssessmentDocumentDate(context, options);
+
+  if (!isValidDocumentDate(rawDate)) {
     throw new Error(
-      'Gagal membuat snapshot asesmen: Tanggal dokumen (documentDate) wajib ditentukan untuk ekspor dokumen resmi.'
+      'Gagal membuat snapshot asesmen: Tanggal Dokumen (documentDate) belum ditetapkan. Atur Tanggal Dokumen pada Pengaturan Administrasi sebelum mengekspor dokumen resmi.'
     );
   }
   const dateResult = formatDocumentDate(rawDate, location);

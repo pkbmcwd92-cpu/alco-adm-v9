@@ -249,7 +249,7 @@ export async function generateAnalisisCpTp(
   );
 
   // 7. Lembar Pengesahan
-  docChildren.push(...createSignoffBlock(school, profile));
+  docChildren.push(...createSignoffBlock(school, profile, context.documentMode === 'blank', context.documentDate));
 
   // Build Document
   const doc = new Document({

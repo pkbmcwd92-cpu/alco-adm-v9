@@ -14,8 +14,21 @@ export function createDocumentSnapshot(
 ): DocumentSnapshot {
   const { school, profile, academicSetting, workspace, cp, tp, atp, students } = context;
   const docMode = modeOverride || context.documentMode || 'data';
-  const rawDate = resolveDocumentDate(context.documentDate || workspace?.documentDate || context.snapshot?.documentDate);
-  const formattedDate = formatDocumentDate(rawDate);
+
+  const hasExplicitDocumentDate =
+    context.documentDate !== undefined &&
+    context.documentDate !== null &&
+    context.documentDate !== '';
+
+  const rawDate =
+    hasExplicitDocumentDate
+      ? resolveDocumentDate(context.documentDate)
+      : resolveDocumentDate(workspace?.documentDate);
+
+  const formattedDate =
+    rawDate
+      ? formatDocumentDate(rawDate)
+      : undefined;
 
   return {
     schoolName: (school?.name || '').trim(),
@@ -63,59 +76,147 @@ export function resolveEffectiveContext(
   context: DocumentGenerationContext,
   snapshotOverride?: DocumentSnapshot
 ): DocumentGenerationContext {
-  const snap = snapshotOverride || context.snapshot;
-  const resolvedDate = resolveDocumentDate(
-    context.documentDate || context.workspace?.documentDate || snap?.documentDate
-  );
+  const snap =
+    snapshotOverride ||
+    context.snapshot;
 
-  const baseContext = {
-    ...context,
-    documentDate: resolvedDate,
-  };
+  // HISTORICAL SNAPSHOT IS AUTHORITATIVE.
+  if (snap) {
+    return {
+      ...context,
 
-  if (!snap) {
-    return baseContext;
+      school: {
+        ...context.school,
+        name:
+          snap.schoolName ||
+          context.school?.name ||
+          '',
+        npsn:
+          snap.schoolNpsn ||
+          snap.npsn ||
+          context.school?.npsn ||
+          '',
+        address:
+          snap.schoolAddress !== undefined
+            ? snap.schoolAddress
+            : context.school?.address || '',
+        village:
+          snap.schoolVillage !== undefined
+            ? snap.schoolVillage
+            : context.school?.village || '',
+        district:
+          snap.schoolDistrict !== undefined
+            ? snap.schoolDistrict
+            : context.school?.district || '',
+        regency:
+          snap.schoolRegency !== undefined
+            ? snap.schoolRegency
+            : context.school?.regency || '',
+        province:
+          snap.schoolProvince !== undefined
+            ? snap.schoolProvince
+            : context.school?.province || '',
+        principalName:
+          snap.principalName ||
+          context.school?.principalName ||
+          '',
+        principalNip:
+          snap.principalNip !== undefined
+            ? snap.principalNip
+            : context.school?.principalNip || '',
+        principalSource:
+          snap.principalSource !== undefined
+            ? snap.principalSource
+            : context.school?.principalSource,
+      },
+
+      profile: {
+        ...context.profile,
+        name:
+          snap.teacherName ||
+          context.profile?.name ||
+          '',
+        nip:
+          snap.teacherNip !== undefined
+            ? snap.teacherNip
+            : context.profile?.nip || '',
+        status:
+          (snap.teacherStatus as any) ||
+          context.profile?.status,
+      },
+
+      academicSetting: {
+        ...context.academicSetting,
+        academicYear:
+          snap.academicYear ||
+          context.academicSetting?.academicYear ||
+          '',
+        semester:
+          (
+            snap.semester ||
+            context.academicSetting?.semester ||
+            ''
+          ) as any,
+        grade:
+          snap.grade ||
+          context.academicSetting?.grade ||
+          '',
+        phase:
+          snap.phase ||
+          context.academicSetting?.phase ||
+          '',
+        subject:
+          snap.subject ||
+          context.academicSetting?.subject ||
+          '',
+        curriculum:
+          snap.curriculum ||
+          context.academicSetting?.curriculum ||
+          '',
+        curriculumType:
+          snap.curriculumType ||
+          getCurriculumType(
+            snap.curriculum ||
+            context.academicSetting?.curriculum
+          ),
+      },
+
+      // IMPORTANT:
+      // even undefined is authoritative for an old snapshot.
+      documentDate: snap.documentDate,
+
+      workspace: context.workspace
+        ? {
+            ...context.workspace,
+            documentDate: snap.documentDate,
+          }
+        : undefined,
+
+      documentMode:
+        snap.documentMode ||
+        context.documentMode ||
+        'data',
+
+      snapshot: snap,
+    };
   }
 
+  // LIVE CONTEXT.
+  const hasExplicitDocumentDate =
+    context.documentDate !== undefined &&
+    context.documentDate !== null &&
+    context.documentDate !== '';
+
+  const resolvedDocumentDate =
+    hasExplicitDocumentDate
+      ? resolveDocumentDate(context.documentDate)
+      : resolveDocumentDate(
+          context.workspace?.documentDate
+        );
+
   return {
-    ...baseContext,
-    school: {
-      ...context.school,
-      name: snap.schoolName || context.school?.name || '',
-      npsn: snap.schoolNpsn || snap.npsn || context.school?.npsn || '',
-      address: snap.schoolAddress !== undefined ? snap.schoolAddress : (context.school?.address || ''),
-      village: snap.schoolVillage !== undefined ? snap.schoolVillage : (context.school?.village || ''),
-      district: snap.schoolDistrict !== undefined ? snap.schoolDistrict : (context.school?.district || ''),
-      regency: snap.schoolRegency !== undefined ? snap.schoolRegency : (context.school?.regency || ''),
-      province: snap.schoolProvince !== undefined ? snap.schoolProvince : (context.school?.province || ''),
-      principalName: snap.principalName || context.school?.principalName || '',
-      principalNip: snap.principalNip !== undefined ? snap.principalNip : (context.school?.principalNip || ''),
-      principalSource: snap.principalSource !== undefined ? snap.principalSource : context.school?.principalSource,
-    },
-    profile: {
-      ...context.profile,
-      name: snap.teacherName || context.profile?.name || '',
-      nip: snap.teacherNip !== undefined ? snap.teacherNip : (context.profile?.nip || ''),
-      status: (snap.teacherStatus as any) || context.profile?.status,
-    },
-    academicSetting: {
-      ...context.academicSetting,
-      academicYear: snap.academicYear || context.academicSetting?.academicYear || '',
-      semester: (snap.semester || context.academicSetting?.semester || '') as any,
-      grade: snap.grade || context.academicSetting?.grade || '',
-      phase: snap.phase || context.academicSetting?.phase || '',
-      subject: snap.subject || context.academicSetting?.subject || '',
-      curriculum: snap.curriculum || context.academicSetting?.curriculum || '',
-      curriculumType: snap.curriculumType || getCurriculumType(snap.curriculum || context.academicSetting?.curriculum),
-    },
-    workspace: context.workspace
-      ? {
-          ...context.workspace,
-          documentDate: snap.documentDate || context.workspace.documentDate,
-        }
-      : undefined,
-    documentMode: snap.documentMode || context.documentMode || 'data',
-    snapshot: snap,
+    ...context,
+    documentDate: resolvedDocumentDate,
   };
 }
 

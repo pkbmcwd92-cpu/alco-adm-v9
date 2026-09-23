@@ -235,10 +235,10 @@ export function App() {
       });
       return;
     }
-    if (!newWsDocumentDate || !isValidDocumentDate(newWsDocumentDate)) {
+    if (newWsDocumentDate && newWsDocumentDate.trim() !== '' && !isValidDocumentDate(newWsDocumentDate)) {
       setAppNotice({
         type: 'warning',
-        message: 'Tanggal Dokumen wajib diisi dengan tanggal yang valid (format YYYY-MM-DD).',
+        message: 'Tanggal Dokumen tidak valid (format YYYY-MM-DD). Kosongkan jika belum ditentukan.',
       });
       return;
     }
@@ -246,7 +246,7 @@ export function App() {
     createWorkspace({
       profileId: activeProfile?.id || '',
       schoolId: activeSchool?.id || '',
-      documentDate: newWsDocumentDate,
+      documentDate: newWsDocumentDate && isValidDocumentDate(newWsDocumentDate) ? newWsDocumentDate.trim() : undefined,
       setting: {
         level: activeProfile?.defaultLevel || '',
         grade: newWsGrade,

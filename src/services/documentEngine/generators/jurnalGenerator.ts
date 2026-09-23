@@ -141,7 +141,7 @@ export async function generateJurnal(context: DocumentGenerationContext): Promis
   docChildren.push(jurnalTable);
 
   // 4. Signoff Block
-  docChildren.push(...createSignoffBlock(school, profile, isBlankMode));
+  docChildren.push(...createSignoffBlock(school, profile, isBlankMode, context.documentDate));
 
   const doc = new Document({
     sections: [
