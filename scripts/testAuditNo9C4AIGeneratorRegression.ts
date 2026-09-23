@@ -545,6 +545,102 @@ async function runRegressionSuite() {
   assert(parseRes28.validatedUnits.length === 0, 'Case 28: Candidate with instrumentType mismatch rejected');
   assert(parseRes28.issues.some((i) => i.code === 'INSTRUMENT_TYPE_MISMATCH'), 'Case 28: Returns INSTRUMENT_TYPE_MISMATCH');
 
+  // ----------------------------------------------------
+  // B.1.1 CANONICAL CONTRACT HYDRATION
+  // ----------------------------------------------------
+
+  // Missing canonical echoes are allowed when coverageUnitId is valid.
+  const hydratedItemJson = JSON.stringify([
+    {
+      coverageUnitId: unit0.coverageUnitId,
+      itemType: 'MULTIPLE_CHOICE',
+      prompt: 'Manakah gerak yang termasuk gerak lokomotor?',
+      options: [
+        { text: 'Berjalan' },
+        { text: 'Membungkuk' },
+        { text: 'Memutar tangan' },
+        { text: 'Menekuk siku' },
+      ],
+    },
+  ]);
+
+  const hydratedItemResult =
+    parseAndValidateRawAIResponse(
+      hydratedItemJson,
+      contract
+    );
+
+  assert(
+    hydratedItemResult.validatedUnits.length === 1 &&
+      hydratedItemResult.validatedUnits[0].coverageUnitId ===
+        unit0.coverageUnitId &&
+      hydratedItemResult.validatedUnits[0].objectiveRefId ===
+        unit0.objectiveRefId &&
+      hydratedItemResult.validatedUnits[0].criterionId ===
+        unit0.criterionId &&
+      hydratedItemResult.validatedUnits[0].instrumentType ===
+        unit0.instrumentType &&
+      hydratedItemResult.validatedUnits[0].allocationUnit ===
+        unit0.allocationUnit,
+    'B.1.1 Case 1: Missing canonical metadata echoes are hydrated from GenerationContract'
+  );
+
+  // Explicit conflicting allocationUnit must still fail.
+  const conflictingAllocationJson = JSON.stringify([
+    {
+      coverageUnitId: unit0.coverageUnitId,
+      allocationUnit: 'TASK',
+      itemType: 'MULTIPLE_CHOICE',
+      prompt: 'Kandidat dengan allocationUnit palsu',
+      options: [
+        { text: 'A' },
+        { text: 'B' },
+      ],
+    },
+  ]);
+
+  const conflictingAllocationResult =
+    parseAndValidateRawAIResponse(
+      conflictingAllocationJson,
+      contract
+    );
+
+  assert(
+    conflictingAllocationResult.validatedUnits.length === 0 &&
+      conflictingAllocationResult.issues.some(
+        (issue) =>
+          issue.code === 'ALLOCATION_UNIT_MISMATCH'
+      ),
+    'B.1.1 Case 2: Explicit conflicting allocationUnit remains rejected'
+  );
+
+  // coverageUnitId remains mandatory.
+  const missingCoverageIdJson = JSON.stringify([
+    {
+      itemType: 'MULTIPLE_CHOICE',
+      prompt: 'Kandidat tanpa coverageUnitId',
+      options: [
+        { text: 'A' },
+        { text: 'B' },
+      ],
+    },
+  ]);
+
+  const missingCoverageIdResult =
+    parseAndValidateRawAIResponse(
+      missingCoverageIdJson,
+      contract
+    );
+
+  assert(
+    missingCoverageIdResult.validatedUnits.length === 0 &&
+      missingCoverageIdResult.issues.some(
+        (issue) =>
+          issue.code === 'MISSING_COVERAGE_UNIT_ID'
+      ),
+    'B.1.1 Case 3: coverageUnitId remains mandatory'
+  );
+
   // Case 29: Semantic validation: ITEM with empty prompt
   const emptyPromptJson = JSON.stringify([
     {
@@ -694,6 +790,40 @@ async function runRegressionSuite() {
   const perfContract = buildGenerationContract(planPerf);
   assert(perfContract.units[0].allocationUnit === 'TASK', 'Case 48: Performance instrument maps to TASK allocation unit');
 
+  const hydratedPerformanceJson = JSON.stringify([
+    {
+      coverageUnitId:
+        perfContract.units[0].coverageUnitId,
+      taskTitle: 'Praktik Gerak Dasar',
+      taskPrompt:
+        'Lakukan rangkaian gerak lokomotor sesuai instruksi guru.',
+      instructions:
+        'Lakukan gerakan secara tertib dan aman.',
+      aspects: [
+        {
+          label: 'Ketepatan gerakan',
+          description:
+            'Gerakan dilakukan sesuai contoh.',
+        },
+      ],
+    },
+  ]);
+
+  const hydratedPerformanceResult =
+    parseAndValidateRawAIResponse(
+      hydratedPerformanceJson,
+      perfContract
+    );
+
+  assert(
+    hydratedPerformanceResult.validatedUnits.length === 1 &&
+      hydratedPerformanceResult.validatedUnits[0]
+        .instrumentType === 'PERFORMANCE' &&
+      hydratedPerformanceResult.validatedUnits[0]
+        .allocationUnit === 'TASK',
+    'B.1.1 Case 4: PERFORMANCE candidate without canonical metadata echo hydrates to TASK'
+  );
+
   const perfProvider = new MockAIProvider(() =>
     JSON.stringify([
       {
@@ -752,6 +882,37 @@ async function runRegressionSuite() {
   });
   const planObs = resolveAssessmentGenerationPlan({ generationSpec: specObs });
   const obsContract = buildGenerationContract(planObs);
+
+  const hydratedObservationJson = JSON.stringify([
+    {
+      coverageUnitId:
+        obsContract.units[0].coverageUnitId,
+      instructions:
+        'Amati pelaksanaan aktivitas murid.',
+      aspects: [
+        {
+          label: 'Partisipasi aktif',
+          indicator:
+            'Murid mengikuti aktivitas sesuai instruksi.',
+        },
+      ],
+    },
+  ]);
+
+  const hydratedObservationResult =
+    parseAndValidateRawAIResponse(
+      hydratedObservationJson,
+      obsContract
+    );
+
+  assert(
+    hydratedObservationResult.validatedUnits.length === 1 &&
+      hydratedObservationResult.validatedUnits[0]
+        .instrumentType === 'OBSERVATION' &&
+      hydratedObservationResult.validatedUnits[0]
+        .allocationUnit === 'OBSERVATION',
+    'B.1.1 Case 5: OBSERVATION candidate without canonical metadata echo hydrates correctly'
+  );
 
   const obsProvider = new MockAIProvider(() =>
     JSON.stringify([

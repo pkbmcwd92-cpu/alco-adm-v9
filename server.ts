@@ -900,6 +900,7 @@ app.post('/api/ai/generate-assessment-package', async (req, res) => {
         contents: userPrompt,
         config: {
           systemInstruction: systemPrompt,
+          responseMimeType: 'application/json',
         },
       });
 

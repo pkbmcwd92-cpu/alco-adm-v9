@@ -484,7 +484,9 @@ ATURAN GENERASI KETAT:
 1. AI ADALAH CONTENT GENERATOR, BUKAN RESOLVER:
    - JANGAN mengubah atau mengarang Tujuan Pembelajaran (TP) / Kompetensi Dasar (KD).
    - JANGAN mengubah atau mengarang kriteria KKTP.
-   - JANGAN mengubah coverageUnitId, objectiveRefId, criterionId, instrumentType, atau allocationUnit.
+   - coverageUnitId WAJIB dikembalikan pada setiap unit dan HARUS identik dengan coverageUnitId pada kontrak.
+   - objectiveRefId, criterionId, instrumentType, dan allocationUnit adalah metadata canonical milik aplikasi dan BOLEH tidak diulang pada keluaran AI.
+   - Jika objectiveRefId, criterionId, instrumentType, atau allocationUnit diulang oleh AI, nilainya HARUS identik dengan kontrak.
    - JANGAN mengubah jumlah butir/tugas (requiredCount). Hasilkan PERSIS sesuai requiredCount.
    - JANGAN mengklaim konten sintetis buatan AI sebagai dokumen resmi (OFFICIAL) atau regulasi pemerintah.
    - JANGAN menandai draf sebagai SIAP atau FINAL (seluruh keluaran adalah DRAFT).
@@ -508,7 +510,11 @@ ATURAN GENERASI KETAT:
    - Sesuaikan beban membaca dan bahasa dengan kalibrasi kelas murid tanpa mencetak metadata internal di dalam teks soal.
 
 FORMAT KELUARAN:
-Keluarkan HANYA JSON murni (array dari objek unit generasi) tanpa teks pembuka atau penutup markdown selain blok json jika diperlukan.`;
+Keluarkan HANYA JSON murni berupa array objek unit generasi.
+Setiap objek WAJIB memiliki coverageUnitId yang identik dengan kontrak.
+Fokuskan keluaran pada konten asesmen yang perlu dibuat.
+Metadata canonical objectiveRefId, criterionId, instrumentType, dan allocationUnit tidak wajib diulang.
+Jangan menambahkan teks pembuka, penutup, atau penjelasan di luar JSON.`;
 
   const userPrompt = `Kontrak Generasi Asesmen:
 Konteks Kurikulum: ${contract.curriculumContext.curriculumType || 'Kurikulum Merdeka'}, Tingkat: ${contract.curriculumContext.schoolLevel || ''}, Kelas: ${contract.curriculumContext.grade ? 'Kelas ' + contract.curriculumContext.grade : ''}, Fase: ${contract.curriculumContext.phase || ''}
@@ -646,7 +652,19 @@ export function parseAndValidateRawAIResponse(
     }
 
     // Reference Integrity Checks against Contract (ID > TEXT MATCH)
-    if (candidate.objectiveRefId !== contractUnit.objectiveRefId) {
+    //
+    // coverageUnitId is the mandatory canonical lookup key.
+    // Once a valid coverageUnitId resolves to a contract unit,
+    // canonical metadata may be omitted by the AI and hydrated
+    // from the GenerationContract.
+    //
+    // Missing canonical echo != mismatch.
+    // Explicit conflicting canonical value = mismatch.
+
+    if (
+      candidate.objectiveRefId !== undefined &&
+      candidate.objectiveRefId !== contractUnit.objectiveRefId
+    ) {
       issues.push({
         code: 'OBJECTIVE_REF_MISMATCH',
         severity: 'REVIEW',
@@ -656,20 +674,26 @@ export function parseAndValidateRawAIResponse(
       return;
     }
 
-    const candidateCrit = candidate.criterionId || undefined;
-    const contractCrit = contractUnit.criterionId || undefined;
-    if (candidateCrit !== contractCrit) {
-      issues.push({
-        code: 'CRITERION_REF_MISMATCH',
-        severity: 'REVIEW',
-        message: `Kandidat unit #${idx + 1} tidak cocok criterionId [${candidateCrit}] vs [${contractCrit}].`,
-        objectiveRefId: contractUnit.objectiveRefId,
-        criterionId: contractUnit.criterionId,
-      });
-      return;
+    if (candidate.criterionId !== undefined) {
+      const candidateCrit = candidate.criterionId || undefined;
+      const contractCrit = contractUnit.criterionId || undefined;
+
+      if (candidateCrit !== contractCrit) {
+        issues.push({
+          code: 'CRITERION_REF_MISMATCH',
+          severity: 'REVIEW',
+          message: `Kandidat unit #${idx + 1} tidak cocok criterionId [${candidateCrit}] vs [${contractCrit}].`,
+          objectiveRefId: contractUnit.objectiveRefId,
+          criterionId: contractUnit.criterionId,
+        });
+        return;
+      }
     }
 
-    if (candidate.instrumentType !== contractUnit.instrumentType) {
+    if (
+      candidate.instrumentType !== undefined &&
+      candidate.instrumentType !== contractUnit.instrumentType
+    ) {
       issues.push({
         code: 'INSTRUMENT_TYPE_MISMATCH',
         severity: 'REVIEW',
@@ -679,7 +703,10 @@ export function parseAndValidateRawAIResponse(
       return;
     }
 
-    if (candidate.allocationUnit !== contractUnit.allocationUnit) {
+    if (
+      candidate.allocationUnit !== undefined &&
+      candidate.allocationUnit !== contractUnit.allocationUnit
+    ) {
       issues.push({
         code: 'ALLOCATION_UNIT_MISMATCH',
         severity: 'REVIEW',
