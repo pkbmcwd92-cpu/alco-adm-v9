@@ -113,10 +113,15 @@ export function resolveAssessmentGenerationUIState(
   }
 
   // 9. If package exists but is not SIAP, and has run validation
-  const pkgRevision = activePackage.revision ?? 1;
+  const pkgRevision =
+    activePackage.revision ?? 1;
+
   const isReportCurrent =
-    validationReport &&
-    validationReport.packageRevision === pkgRevision;
+    !!validationReport &&
+    validationReport.assessmentPackageId ===
+      activePackage.id &&
+    validationReport.packageRevision ===
+      pkgRevision;
 
   const reportStatusAllowsTeacherConfirmation =
     validationReport?.overallStatus === 'PASS' ||

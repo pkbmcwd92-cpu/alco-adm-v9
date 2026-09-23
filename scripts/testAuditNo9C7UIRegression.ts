@@ -762,6 +762,162 @@ async function runTests() {
     }
   );
 
+  await test(
+    'DRAFT_REVIEW when validation report belongs to another package with the same revision',
+    () => {
+      const reportFromAnotherPackage = {
+        ...mockPassReport,
+        assessmentPackageId: 'pkg-other',
+        packageRevision:
+          mockDraftPackage.revision ?? 1,
+      };
+
+      const state =
+        resolveAssessmentGenerationUIState({
+          selectedPlanId: 'plan-1',
+          assessmentPlan: mockValidPlan,
+          academicSetting: mockAcademicSetting,
+          tp: mockTPData,
+          assessmentCriteria:
+            mockAssessmentCriteria,
+          activePackage: mockDraftPackage,
+          validationReport:
+            reportFromAnotherPackage,
+          confirmationEligible: true,
+        });
+
+      assert(
+        state === 'DRAFT_REVIEW',
+        'Report from another package must never authorize confirmation even when revision matches'
+      );
+    }
+  );
+
+  await test(
+    'DRAFT_REVIEW when REVIEW report belongs to another package',
+    () => {
+      const reviewFromAnotherPackage = {
+        ...mockReviewReport,
+        assessmentPackageId: 'pkg-other',
+        packageRevision:
+          mockDraftPackage.revision ?? 1,
+      };
+
+      const state =
+        resolveAssessmentGenerationUIState({
+          selectedPlanId: 'plan-1',
+          assessmentPlan: mockValidPlan,
+          academicSetting: mockAcademicSetting,
+          tp: mockTPData,
+          assessmentCriteria:
+            mockAssessmentCriteria,
+          activePackage: mockDraftPackage,
+          validationReport:
+            reviewFromAnotherPackage,
+          confirmationEligible: true,
+        });
+
+      assert(
+        state === 'DRAFT_REVIEW',
+        'REVIEW report from another package must fail exact identity check'
+      );
+    }
+  );
+
+  await test(
+    'DRAFT_REVIEW when validation report has no assessmentPackageId',
+    () => {
+      const reportWithoutPackageId = {
+        ...mockPassReport,
+        assessmentPackageId:
+          undefined as any,
+      };
+
+      const state =
+        resolveAssessmentGenerationUIState({
+          selectedPlanId: 'plan-1',
+          assessmentPlan: mockValidPlan,
+          academicSetting: mockAcademicSetting,
+          tp: mockTPData,
+          assessmentCriteria:
+            mockAssessmentCriteria,
+          activePackage: mockDraftPackage,
+          validationReport:
+            reportWithoutPackageId,
+          confirmationEligible: true,
+        });
+
+      assert(
+        state === 'DRAFT_REVIEW',
+        'Validation report without exact package identity must fail closed'
+      );
+    }
+  );
+
+  await test(
+    'READY_FOR_CONFIRMATION when PASS report matches exact package ID and revision',
+    () => {
+      const exactPassReport = {
+        ...mockPassReport,
+        assessmentPackageId:
+          mockDraftPackage.id,
+        packageRevision:
+          mockDraftPackage.revision ?? 1,
+      };
+
+      const state =
+        resolveAssessmentGenerationUIState({
+          selectedPlanId: 'plan-1',
+          assessmentPlan: mockValidPlan,
+          academicSetting: mockAcademicSetting,
+          tp: mockTPData,
+          assessmentCriteria:
+            mockAssessmentCriteria,
+          activePackage: mockDraftPackage,
+          validationReport:
+            exactPassReport,
+          confirmationEligible: true,
+        });
+
+      assert(
+        state === 'READY_FOR_CONFIRMATION',
+        'Exact PASS report must remain eligible for confirmation'
+      );
+    }
+  );
+
+  await test(
+    'READY_FOR_CONFIRMATION when REVIEW report matches exact package ID and revision',
+    () => {
+      const exactReviewReport = {
+        ...mockReviewReport,
+        assessmentPackageId:
+          mockDraftPackage.id,
+        packageRevision:
+          mockDraftPackage.revision ?? 1,
+      };
+
+      const state =
+        resolveAssessmentGenerationUIState({
+          selectedPlanId: 'plan-1',
+          assessmentPlan: mockValidPlan,
+          academicSetting: mockAcademicSetting,
+          tp: mockTPData,
+          assessmentCriteria:
+            mockAssessmentCriteria,
+          activePackage: mockDraftPackage,
+          validationReport:
+            exactReviewReport,
+          confirmationEligible: true,
+        });
+
+      assert(
+        state === 'READY_FOR_CONFIRMATION',
+        'Exact REVIEW report must allow explicit teacher confirmation'
+      );
+    }
+  );
+
   await test('DRAFT_REVIEW when validationReport packageRevision is stale (stale report)', () => {
     const state = resolveAssessmentGenerationUIState({
       selectedPlanId: 'plan-1',

@@ -122,6 +122,10 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
   const selectedPlan = assessmentPlans.find((p) => p.id === selectedPlanId);
   const activePackage = assessmentPackages.find((pkg) => pkg.assessmentPlanId === selectedPlanId);
 
+  useEffect(() => {
+    setValidationReport(null);
+  }, [activePackage?.id]);
+
   const validationContext = {
     academicSetting,
     assessmentPlan: selectedPlan,
