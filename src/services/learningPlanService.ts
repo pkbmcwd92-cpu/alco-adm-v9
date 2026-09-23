@@ -610,20 +610,23 @@ export function validateLearningPlan(
     }
   }
 
-  // 7. Validate Graduate Profile Dimensions against 8 canonical values
+  // 7. Validate Graduate Profile Dimensions against the shared canonical validator.
+  // Fail-closed: blank, non-string, and unknown values are validation errors.
   if (plan.graduateProfileDimensions !== undefined) {
-    if (!Array.isArray(plan.graduateProfileDimensions)) {
-      errors.push('Dimensi Profil Lulusan (graduateProfileDimensions) harus berupa daftar (array).');
-    } else {
-      const invalidDims = plan.graduateProfileDimensions.filter(
-        (d) => typeof d === 'string' && d.trim().length > 0 && !isCanonicalGraduateProfileDimension(d)
+    const dimValidation = validateGraduateProfileDimensions(
+      plan.graduateProfileDimensions
+    );
+
+    if (!dimValidation.isValid) {
+      errors.push(
+        dimValidation.error || 'Dimensi Profil Lulusan tidak valid.'
       );
-      if (invalidDims.length > 0) {
-        errors.push(`Dimensi Profil Lulusan tidak valid: ${invalidDims.join(', ')}`);
-      }
-      const uniqueDims = new Set(plan.graduateProfileDimensions.map((d) => typeof d === 'string' ? d.trim() : d));
-      if (uniqueDims.size !== plan.graduateProfileDimensions.length) {
-        warnings.push('Terdapat duplikasi nilai pada Dimensi Profil Lulusan (graduateProfileDimensions).');
+    } else {
+      const uniqueDims = new Set(dimValidation.dimensions);
+      if (uniqueDims.size !== dimValidation.dimensions.length) {
+        warnings.push(
+          'Terdapat duplikasi nilai pada Dimensi Profil Lulusan (graduateProfileDimensions).'
+        );
       }
     }
   }
@@ -692,13 +695,13 @@ export function validateLearningPlan(
       if (!plan.initialCompetency || typeof plan.initialCompetency !== 'string' || plan.initialCompetency.trim() === '') {
         finalizationErrors.push('Kompetensi Awal belum diisi.');
       }
-      const dimValidation = validateGraduateProfileDimensions(plan.graduateProfileDimensions);
+      const dimValidation = validateGraduateProfileDimensions(
+        plan.graduateProfileDimensions
+      );
       if (!dimValidation.isValid) {
-        if (dimValidation.invalidDimensions.length > 0) {
-          finalizationErrors.push(`Dimensi Profil Lulusan tidak valid: ${dimValidation.invalidDimensions.join(', ')}`);
-        } else {
-          finalizationErrors.push('Dimensi Profil Lulusan belum dipilih.');
-        }
+        finalizationErrors.push(
+          dimValidation.error || 'Dimensi Profil Lulusan belum dipilih.'
+        );
       }
       const validResources = (plan.resources || []).filter(
         (r) =>

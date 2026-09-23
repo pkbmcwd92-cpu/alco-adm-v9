@@ -338,7 +338,7 @@ assert((readinessCode.match(/function validateAcademicSettingReadiness/g) || [])
 assert(!curriculumRouterCode.includes("from './jpEngine'"), 'U1.3.1-F.5: unused jpEngine import removed from curriculumRouter');
 assert(regressionCode.includes("{ level: 'SMP', grade: 'VII' }"), 'U1.3.1-F.6: Roman numeral VII is retained only as an invalid fixture');
 assert(regressionCode.includes("{ level: 'SMA', grade: 'X' }"), 'U1.3.1-F.7: Roman numeral X is retained only as an invalid fixture');
-assert(APP_BUILD_ID === 'M1.1-20260923-1', `U1.3.1-F.8: APP_BUILD_ID follows latest recovery fingerprint M1.1-20260923-1 (actual: ${APP_BUILD_ID})`);
+assert(APP_BUILD_ID === 'M1.1.1-20260923-1', `U1.3.1-F.8: APP_BUILD_ID follows latest recovery fingerprint M1.1.1-20260923-1 (actual: ${APP_BUILD_ID})`);
 
 console.log('\n====================================================');
 console.log(`TEST RESULTS: ${passed} passed, ${failed} failed (Total: ${passed + failed})`);

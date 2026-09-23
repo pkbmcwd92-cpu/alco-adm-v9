@@ -50,11 +50,7 @@ export function validateGraduateProfileDimensions(
     };
   }
 
-  const cleaned = dimensions
-    .filter((d): d is string => typeof d === 'string' && d.trim().length > 0)
-    .map((d) => d.trim());
-
-  if (cleaned.length === 0) {
+  if (dimensions.length === 0) {
     return {
       isValid: false,
       invalidDimensions: [],
@@ -63,8 +59,25 @@ export function validateGraduateProfileDimensions(
     };
   }
 
+  const malformedIndex = dimensions.findIndex(
+    (dimension) =>
+      typeof dimension !== 'string' ||
+      dimension.trim().length === 0
+  );
+
+  if (malformedIndex >= 0) {
+    return {
+      isValid: false,
+      invalidDimensions: [],
+      dimensions: [],
+      error: `Dimensi Profil Lulusan butir ke-${malformedIndex + 1} harus berupa string non-kosong.`,
+    };
+  }
+
+  const cleaned = (dimensions as string[]).map((dimension) => dimension.trim());
+
   const invalidDimensions = cleaned.filter(
-    (d) => !CANONICAL_GRADUATE_PROFILE_DIMENSIONS_SET.has(d)
+    (dimension) => !CANONICAL_GRADUATE_PROFILE_DIMENSIONS_SET.has(dimension)
   );
 
   if (invalidDimensions.length > 0) {

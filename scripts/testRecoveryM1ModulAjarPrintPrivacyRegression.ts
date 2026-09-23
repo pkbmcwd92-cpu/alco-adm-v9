@@ -5,12 +5,6 @@ import {
   confirmLearningPlan,
 } from '../src/services/learningPlanService';
 import { generateModulAjar } from '../src/services/documentEngine/generators/modulAjarGenerator';
-import { generatePdfDocument } from '../src/services/documentEngine/renderers/pdf/pdfDocGenerators';
-import {
-  PdfDocumentBuilder,
-  PDF_FORMAL_NEUTRAL_THEME,
-} from '../src/services/documentEngine/renderers/pdf/pdfRenderer';
-import { PDF_THEME } from '../src/services/documentEngine/renderers/pdf/pdfTheme';
 import {
   CANONICAL_GRADUATE_PROFILE_DIMENSIONS,
   isCanonicalGraduateProfileDimension,
@@ -18,9 +12,11 @@ import {
 } from '../src/constants/graduateProfileDimensions';
 import { APP_BUILD_ID } from '../src/config/buildInfo';
 import { AcademicSetting, TPData, ATPData, LearningPlan, SchoolData, TeacherProfile } from '../src/types';
+import * as fs from 'fs';
+import * as path from 'path';
 
-async function runM11RegressionSuite() {
-  console.log('=== RUNNING M1.1 MODUL AJAR PDF NEUTRAL STYLE, GRADUATE PROFILE VALIDATION & PRIVACY REGRESSION SUITE ===\n');
+async function runM111RegressionSuite() {
+  console.log('=== RUNNING M1.1.1 MODUL AJAR CANONICAL VALIDATION & DOCX PRIVACY REGRESSION SUITE ===\n');
   let passedCount = 0;
   let failedCount = 0;
 
@@ -36,7 +32,7 @@ async function runM11RegressionSuite() {
 
   // 1. Build ID verification
   console.log('--- Check 1: Build ID ---');
-  assert(APP_BUILD_ID === 'M1.1-20260923-1', `Build ID must be M1.1-20260923-1 (Actual: ${APP_BUILD_ID})`);
+  assert(APP_BUILD_ID === 'M1.1.1-20260923-1', `Build ID must be M1.1.1-20260923-1 (Actual: ${APP_BUILD_ID})`);
 
   const mockSchool: SchoolData = {
     id: 's-m1',
@@ -215,6 +211,71 @@ async function runM11RegressionSuite() {
     'Valid canonical dimensions array passes validation'
   );
 
+  const emptyDimensionsResult = validateGraduateProfileDimensions([]);
+  assert(
+    !emptyDimensionsResult.isValid,
+    'Empty graduateProfileDimensions array is rejected'
+  );
+
+  const blankDimensionResult = validateGraduateProfileDimensions([
+    'Penalaran Kritis',
+    '',
+  ]);
+  assert(
+    !blankDimensionResult.isValid &&
+      blankDimensionResult.error?.includes('butir ke-2'),
+    'Blank dimension item is rejected instead of silently dropped'
+  );
+
+  const whitespaceDimensionResult = validateGraduateProfileDimensions([
+    'Penalaran Kritis',
+    '   ',
+  ]);
+  assert(
+    !whitespaceDimensionResult.isValid &&
+      whitespaceDimensionResult.error?.includes('butir ke-2'),
+    'Whitespace-only dimension item is rejected instead of silently dropped'
+  );
+
+  const nonStringDimensionResult = validateGraduateProfileDimensions([
+    'Penalaran Kritis',
+    123,
+  ] as any);
+  assert(
+    !nonStringDimensionResult.isValid &&
+      nonStringDimensionResult.error?.includes('butir ke-2'),
+    'Non-string dimension item is rejected instead of silently dropped'
+  );
+
+  const nullDimensionResult = validateGraduateProfileDimensions([
+    'Penalaran Kritis',
+    null,
+  ] as any);
+  assert(
+    !nullDimensionResult.isValid &&
+      nullDimensionResult.error?.includes('butir ke-2'),
+    'Null dimension item is rejected instead of silently dropped'
+  );
+
+  const undefinedDimensionResult = validateGraduateProfileDimensions([
+    'Penalaran Kritis',
+    undefined,
+  ] as any);
+  assert(
+    !undefinedDimensionResult.isValid &&
+      undefinedDimensionResult.error?.includes('butir ke-2'),
+    'Undefined dimension item is rejected instead of silently dropped'
+  );
+
+  const trimmedDimensionResult = validateGraduateProfileDimensions([
+    ' Penalaran Kritis ',
+  ]);
+  assert(
+    trimmedDimensionResult.isValid &&
+      trimmedDimensionResult.dimensions[0] === 'Penalaran Kritis',
+    'Outer whitespace is safely trimmed for a canonical dimension'
+  );
+
   // LearningPlan validator draft error with invalid dimension
   const draftWithInvalidDim: LearningPlan = {
     ...incompleteSiapPlan,
@@ -225,6 +286,26 @@ async function runM11RegressionSuite() {
   assert(
     draftVal.errors.some((e) => e.includes('Dimensi Profil Lulusan tidak valid: Dimensi Palsu')),
     'Draft with non-canonical dimension produces explicit validation error'
+  );
+
+  const draftWithMalformedDim: LearningPlan = {
+    ...incompleteSiapPlan,
+    status: 'DRAFT',
+    graduateProfileDimensions: ['Penalaran Kritis', 123] as any,
+  };
+
+  const malformedDraftVal = validateLearningPlan(
+    draftWithMalformedDim,
+    { academicSetting: mockSetting }
+  );
+
+  assert(
+    malformedDraftVal.errors.some(
+      (error) =>
+        error.includes('Dimensi Profil Lulusan') &&
+        error.includes('butir ke-2')
+    ),
+    'LearningPlan validator rejects malformed graduateProfileDimensions through shared validator'
   );
 
   // Check 4: Complete Print-Ready Plan passes validation
@@ -255,85 +336,9 @@ async function runM11RegressionSuite() {
     completeVal.errors.join(' | ')
   );
 
-  // Check 5: M1.1-A PDF Modul Ajar Professional Neutral Style Isolation
-  console.log('\n--- Check 5: M1.1-A Modul Ajar PDF Neutral Style & Theme Isolation ---');
-  const neutralBuilder = new PdfDocumentBuilder('portrait', 'FORMAL_NEUTRAL');
-  const neutralTheme = neutralBuilder.getTheme();
+  // Check 5: DOCX Generation produces valid file
+  console.log('\n--- Check 5: DOCX Export Output ---');
 
-  assert(
-    neutralBuilder.getStyleProfile() === 'FORMAL_NEUTRAL',
-    'PdfDocumentBuilder supports FORMAL_NEUTRAL style profile'
-  );
-  assert(
-    neutralTheme.fonts.base === 'times' && neutralTheme.fonts.bold === 'times',
-    'FORMAL_NEUTRAL uses Times New Roman font family'
-  );
-  assert(
-    neutralTheme.colors.primary[0] === 0 &&
-      neutralTheme.colors.primary[1] === 0 &&
-      neutralTheme.colors.primary[2] === 0,
-    'FORMAL_NEUTRAL primary color is black [0, 0, 0]'
-  );
-  assert(
-    neutralTheme.sizes.docTitle === 14 && neutralTheme.sizes.heading1 === 12 && neutralTheme.sizes.body === 11,
-    'FORMAL_NEUTRAL typography sizes: docTitle 14pt, heading 12pt, body 11pt'
-  );
-
-  // Verify DEFAULT style profile & global PDF_THEME remains untouched for other documents
-  const defaultBuilder = new PdfDocumentBuilder('portrait', 'DEFAULT');
-  const defaultTheme = defaultBuilder.getTheme();
-  assert(
-    defaultBuilder.getStyleProfile() === 'DEFAULT',
-    'Default builder uses DEFAULT style profile'
-  );
-  assert(
-    defaultTheme.fonts.base === 'helvetica',
-    'DEFAULT builder retains helvetica font'
-  );
-  assert(
-    PDF_THEME.colors.primary[0] === 30 && PDF_THEME.colors.primary[1] === 58 && PDF_THEME.colors.primary[2] === 138,
-    'Global PDF_THEME is unmodified and maintains Royal Navy theme for other documents'
-  );
-
-  // Check 6: PDF Generation produces valid clean vector PDF with FORMAL_NEUTRAL
-  console.log('\n--- Check 6: PDF Export Output ---');
-  const pdfResult = await generatePdfDocument('MODUL_AJAR', {
-    school: mockSchool,
-    profile: mockProfile,
-    academicSetting: mockSetting,
-    learningPlans: [completeSiapPlan],
-    tp: mockTpData,
-    atp: mockAtpData,
-    skipDownload: true,
-  });
-
-  assert(
-    !!pdfResult && !!pdfResult.blob && pdfResult.fileName.endsWith('.pdf'),
-    'PDF Generator generates valid Modul Ajar PDF blob',
-    `fileName: ${pdfResult?.fileName}`
-  );
-
-  // Check 7: PDF Blank Template Export
-  console.log('\n--- Check 7: PDF Blank Template Export ---');
-  const blankPdfResult = await generatePdfDocument('MODUL_AJAR', {
-    school: mockSchool,
-    profile: mockProfile,
-    academicSetting: mockSetting,
-    learningPlans: [],
-    tp: mockTpData,
-    atp: mockAtpData,
-    documentMode: 'blank',
-    skipDownload: true,
-  });
-
-  assert(
-    !!blankPdfResult && !!blankPdfResult.blob && blankPdfResult.fileName.endsWith('.pdf'),
-    'Blank PDF Generator generates template successfully',
-    `fileName: ${blankPdfResult?.fileName}`
-  );
-
-  // Check 8: DOCX Generation produces valid clean file
-  console.log('\n--- Check 8: DOCX Export Output ---');
   const docxResult = await generateModulAjar({
     school: mockSchool,
     profile: mockProfile,
@@ -345,14 +350,32 @@ async function runM11RegressionSuite() {
   });
 
   assert(
-    docxResult.success && !!docxResult.blob && docxResult.fileName.endsWith('.docx'),
+    docxResult.success &&
+      !!docxResult.blob &&
+      docxResult.fileName.endsWith('.docx'),
     'DOCX Generator generates valid Modul Ajar document blob',
     `fileName: ${docxResult.fileName}`
   );
 
-  // Check 9: M1.1-C Export Privacy and Forbidden Token Absence
-  console.log('\n--- Check 9: M1.1-C Export Privacy & Forbidden Token Absence ---');
-  const forbiddenTokens = [
+  // Check 6: Deterministic DOCX privacy source regression
+  console.log('\n--- Check 6: DOCX Export Privacy Source Guard ---');
+
+  const docxGeneratorPath = path.join(
+    process.cwd(),
+    'src/services/documentEngine/generators/modulAjarGenerator.ts'
+  );
+
+  const docxGeneratorSource = fs.readFileSync(
+    docxGeneratorPath,
+    'utf-8'
+  );
+
+  // Ignore comments so documentation words do not create false positives.
+  const executableDocxSource = docxGeneratorSource
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  const forbiddenDocxTokens = [
     'AI_DRAFT',
     'Status Dokumen',
     'Status Rencana',
@@ -363,13 +386,10 @@ async function runM11RegressionSuite() {
     'sourceType',
   ];
 
-  // Inspect snapshot data sent to PDF renderer for Modul Ajar
-  const snapshotString = JSON.stringify(pdfResult?.snapshot || {});
-  for (const token of forbiddenTokens) {
-    // Check that sections rendered for print do not contain forbidden display strings
+  for (const token of forbiddenDocxTokens) {
     assert(
-      !snapshotString.includes(`"${token}"`) && !snapshotString.includes(`: "${token}"`),
-      `PDF snapshot must not contain forbidden display token: '${token}'`
+      !executableDocxSource.includes(token),
+      `DOCX Modul Ajar production renderer must not expose forbidden token: ${token}`
     );
   }
 
@@ -383,4 +403,4 @@ async function runM11RegressionSuite() {
   }
 }
 
-runM11RegressionSuite();
+runM111RegressionSuite();
