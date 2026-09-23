@@ -67,13 +67,13 @@ async function runAcceptanceTests() {
       name: 'SD Negeri 01 Pagi',
       npsn: '12345678',
       address: 'Jl. Merdeka No. 1',
-      village: 'Kebon Sirih',
-      district: 'Menteng',
-      regency: 'Jakarta Pusat',
-      province: 'DKI Jakarta',
+      village: '',
+      district: '',
+      regency: '',
+      province: '',
       principalName: 'Kepala Sekolah Utama',
       principalNip: '197001011995011001',
-    } as any);
+    });
     initialStorage = loadAppStorage();
     initialSchool = initialStorage.schools[0];
   }

@@ -88,20 +88,23 @@ export function formatCanonicalDocumentDate(
 }
 
 /**
- * Resolves a valid canonical document date, falling back to local today if invalid or missing.
+ * Resolves a valid canonical document date. Returns undefined if missing or invalid (fail-closed).
  */
-export function resolveDocumentDate(dateInput?: string | null): string {
-  if (isValidDocumentDate(dateInput)) {
-    return dateInput as string;
+export function resolveDocumentDate(dateInput?: string | null): string | undefined {
+  if (!isValidDocumentDate(dateInput)) {
+    return undefined;
   }
-  return getLocalTodayDocumentDate();
+  return dateInput as string;
 }
 
 /**
  * Formats a document date into formal Indonesian date string.
+ * Returns empty string '' if missing or invalid (fail-closed).
  */
 export function formatDocumentDate(dateInput?: string | null, location?: string): string {
-  const effective = resolveDocumentDate(dateInput);
-  return formatCanonicalDocumentDate(effective, location).formattedDate;
+  if (!isValidDocumentDate(dateInput)) {
+    return '';
+  }
+  return formatCanonicalDocumentDate(dateInput as string, location).formattedDate;
 }
 

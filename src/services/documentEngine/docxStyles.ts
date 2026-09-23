@@ -33,6 +33,9 @@ export const INDONESIAN_MONTHS = [
 export function formatOfficialDate(school: SchoolData, customDate?: string): string {
   const location = school.district?.replace(/^Kec\.\s*/i, '') || school.regency || school.village || 'Tempat';
   const effectiveDate = resolveDocumentDate(customDate);
+  if (!effectiveDate) {
+    return `${location}, .....`;
+  }
   const formatted = formatDocumentDate(effectiveDate);
   return `${location}, ${formatted}`;
 }

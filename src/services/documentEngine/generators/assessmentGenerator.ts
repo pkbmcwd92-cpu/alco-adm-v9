@@ -10,7 +10,7 @@ export async function generateAssessment(
   const exportResult = await exportAssessmentDocx(context, {
     documentMode: context.documentMode,
     skipDownload: context.skipDownload,
-    documentDate: context.documentDate || context.workspace?.documentDate || context.snapshot?.documentDate,
+    documentDate: context.documentDate,
   });
 
   if (!context.skipDownload) {

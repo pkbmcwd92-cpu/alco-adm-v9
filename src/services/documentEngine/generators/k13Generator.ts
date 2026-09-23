@@ -81,14 +81,7 @@ export async function generateAnalisisK13(context: DocumentGenerationContext): P
   docChildren.push(new Paragraph({ spacing: { after: 220 } }));
 
   // Signatures
-  docChildren.push(
-    ...createSignoffBlock(
-      school,
-      profile,
-      context.documentMode === 'blank',
-      context.workspace?.documentDate || context.snapshot?.documentDate
-    )
-  );
+  docChildren.push(...createSignoffBlock(school, profile));
 
   const doc = new Document({
     sections: [
@@ -204,14 +197,7 @@ export async function generatePenetapanKKM(context: DocumentGenerationContext): 
   docChildren.push(new Paragraph({ spacing: { after: 220 } }));
 
   // Signatures
-  docChildren.push(
-    ...createSignoffBlock(
-      school,
-      profile,
-      context.documentMode === 'blank',
-      context.workspace?.documentDate || context.snapshot?.documentDate
-    )
-  );
+  docChildren.push(...createSignoffBlock(school, profile));
 
   const doc = new Document({
     sections: [

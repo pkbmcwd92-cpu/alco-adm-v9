@@ -316,14 +316,7 @@ export async function generatePROTA(context: DocumentGenerationContext): Promise
   );
 
   // 5. Signoff
-  docChildren.push(
-    ...createSignoffBlock(
-      school,
-      profile,
-      context.documentMode === 'blank',
-      context.workspace?.documentDate || context.snapshot?.documentDate
-    )
-  );
+  docChildren.push(...createSignoffBlock(school, profile));
 
   const doc = new Document({
     sections: [

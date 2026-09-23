@@ -14,7 +14,7 @@ export function createDocumentSnapshot(
 ): DocumentSnapshot {
   const { school, profile, academicSetting, workspace, cp, tp, atp, students } = context;
   const docMode = modeOverride || context.documentMode || 'data';
-  const rawDate = resolveDocumentDate(workspace?.documentDate);
+  const rawDate = resolveDocumentDate(context.documentDate || workspace?.documentDate || context.snapshot?.documentDate);
   const formattedDate = formatDocumentDate(rawDate);
 
   return {
@@ -64,12 +64,21 @@ export function resolveEffectiveContext(
   snapshotOverride?: DocumentSnapshot
 ): DocumentGenerationContext {
   const snap = snapshotOverride || context.snapshot;
+  const resolvedDate = resolveDocumentDate(
+    context.documentDate || context.workspace?.documentDate || snap?.documentDate
+  );
+
+  const baseContext = {
+    ...context,
+    documentDate: resolvedDate,
+  };
+
   if (!snap) {
-    return context;
+    return baseContext;
   }
 
   return {
-    ...context,
+    ...baseContext,
     school: {
       ...context.school,
       name: snap.schoolName || context.school?.name || '',

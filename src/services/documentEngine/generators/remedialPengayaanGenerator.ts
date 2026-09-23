@@ -198,14 +198,7 @@ export async function generateRemedialPengayaan(context: DocumentGenerationConte
   docChildren.push(new Paragraph({ spacing: { after: 220 } }));
 
   // Signatures
-  docChildren.push(
-    ...createSignoffBlock(
-      school,
-      profile,
-      isBlankMode,
-      context.workspace?.documentDate || context.snapshot?.documentDate
-    )
-  );
+  docChildren.push(...createSignoffBlock(school, profile, isBlankMode));
 
   const doc = new Document({
     sections: [

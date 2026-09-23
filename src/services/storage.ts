@@ -226,8 +226,6 @@ export function loadAppStorage(): AppStorageState {
         );
         if (legacyAssign) {
           p.schoolId = legacyAssign.schoolId;
-        } else if (parsed.schools.length > 0) {
-          p.schoolId = parsed.schools[0].id;
         } else if (p.schoolId) {
           delete p.schoolId;
         }

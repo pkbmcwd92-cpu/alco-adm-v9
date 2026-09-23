@@ -245,6 +245,14 @@ export function validateDocumentRequirements(
     missingFields.push('Tahun Pelajaran belum diisi');
   }
 
+  // Document Date check for official mode (blank mode bypasses)
+  if (context.documentMode !== 'blank') {
+    const rawDate = context.documentDate || context.workspace?.documentDate || context.snapshot?.documentDate;
+    if (!rawDate || typeof rawDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(rawDate.trim())) {
+      missingFields.push('Tanggal Resmi Dokumen belum diset pada Administrasi Workspace');
+    }
+  }
+
   const curType = getCurriculumTypeFromSetting(context.academicSetting);
   if (!curType) {
     return {

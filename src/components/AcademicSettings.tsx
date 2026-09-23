@@ -199,8 +199,8 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
   const handleSave = (e?: React.FormEvent): AcademicSetting | null => {
     if (e) e.preventDefault();
 
-    if (!documentDate || !isValidDocumentDate(documentDate)) {
-      setErrorMessage('Tanggal Dokumen wajib ditetapkan.');
+    if (documentDate && documentDate.trim() !== '' && !isValidDocumentDate(documentDate)) {
+      setErrorMessage('Format Tanggal Dokumen tidak valid (YYYY-MM-DD).');
       return null;
     }
 
@@ -364,7 +364,7 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
               <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-200">
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5 flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Tanggal Dokumen <span className="text-rose-500">*</span></span>
+                  <span>Tanggal Dokumen Resmi</span>
                 </label>
                 <input
                   id="input-workspace-document-date"
@@ -373,11 +373,16 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
                   onChange={(e) => setDocumentDate(e.target.value)}
                   className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-600 bg-white cursor-pointer"
                 />
-                <p className="text-[11px] text-slate-500 mt-1">
-                  {!documentDate
-                    ? 'Belum ditetapkan. Pilih tanggal resmi yang akan digunakan seluruh dokumen administrasi.'
-                    : 'Digunakan sebagai tanggal resmi pada dokumen Word/PDF. Mengubah tanggal ini tidak mengubah isi perangkat pembelajaran.'}
-                </p>
+                {!documentDate || !isValidDocumentDate(documentDate) ? (
+                  <div className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span><strong>Tanggal Resmi Dokumen Belum Diset</strong>. Pilih tanggal untuk membuka akses ekspor resmi.</span>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-600 mt-1.5">
+                    Tanggal resmi dokumen: <strong>{workspace?.documentDate ? documentDate : 'Akan disimpan saat tombol Simpan diklik'}</strong>
+                  </p>
+                )}
               </div>
             </div>
           )}

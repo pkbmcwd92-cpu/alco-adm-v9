@@ -78,8 +78,6 @@ const mockSetting: AcademicSetting = {
 const mockTP: TPData = {
   id: 'tpdata-2026',
   academicSettingId: 'setting-2026',
-  workflowStatus: 'SIAP',
-  needsReview: false,
   items: [
     {
       id: 'tp-inf-01',
@@ -104,23 +102,12 @@ const mockTP: TPData = {
 const mockATP: ATPData = {
   id: 'atpdata-2026',
   academicSettingId: 'setting-2026',
-  tpDataId: 'tpdata-2026',
-  basedOnTpUpdatedAt: mockTP.updatedAt,
-  workflowStatus: 'SIAP',
-  needsReview: false,
   items: [
     {
       id: 'atp-inf-01',
       tpId: 'tp-inf-01',
       stepNumber: 1,
       materialScope: 'Algoritma dan Pemrograman',
-      jp: 4,
-    },
-    {
-      id: 'atp-inf-02',
-      tpId: 'tp-inf-02',
-      stepNumber: 2,
-      materialScope: 'Struktur Kontrol',
       jp: 4,
     },
   ],
@@ -188,7 +175,7 @@ const planWithExperiences: LearningPlan = {
       },
     ],
   },
-  graduateProfileDimensions: ['Penalaran Kritis', 'Kemandirian'],
+  graduateProfileDimensions: ['Bernalar Kritis', 'Mandiri'],
   deepLearningContext: {
     principles: ['MINDFUL', 'MEANINGFUL', 'JOYFUL'],
   },
@@ -255,7 +242,7 @@ const invalidContextPlan: LearningPlan = {
   deepLearningContext: {
     principles: ['MINDFUL', 'MINDFUL', 'UNKNOWN_PRINCIPLE' as any],
   },
-  graduateProfileDimensions: ['Kemandirian', 'Kemandirian'],
+  graduateProfileDimensions: ['Mandiri', 'Mandiri'],
 };
 
 const res3 = validateLearningPlan(invalidContextPlan, {

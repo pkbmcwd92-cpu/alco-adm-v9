@@ -57,20 +57,16 @@ async function runRegressionSuite() {
   const mockTPMat: TPData = {
     id: 'tp-data-mat',
     academicSettingId: 'setting-sd-4',
-    workflowStatus: 'SIAP',
-    needsReview: false,
     items: [
       {
         id: 'tp-mat-1',
         code: 'TP-M1',
-        statement: 'Memahami konsep pecahan senilai dan desimal dasar',
         tp: 'Memahami konsep pecahan senilai dan desimal dasar',
         order: 1,
       } as any,
       {
         id: 'tp-mat-2',
         code: 'TP-M2',
-        statement: 'Menghitung operasi pembagian dan perkalian bilangan cacah',
         tp: 'Menghitung operasi pembagian dan perkalian bilangan cacah',
         order: 2,
       } as any,
@@ -305,8 +301,6 @@ async function runRegressionSuite() {
       id: 'crit-other-tp',
       academicSettingId: 'setting-sd-4',
       tpId: 'tp-other-foreign-tp', // Tidak ada di planMatSiap.tpIds
-      workflowStatus: 'SIAP',
-      needsReview: false,
       description: 'Kriteria milik TP lain',
       approach: 'rubrik',
       indicators: [],
@@ -378,13 +372,10 @@ async function runRegressionSuite() {
   const tpPjokMotorik: TPData = {
     id: 'tp-pjok',
     academicSettingId: settingPJOK.id,
-    workflowStatus: 'SIAP',
-    needsReview: false,
     items: [
       {
         id: 'tp-p-1',
         code: 'TP-PJOK-1',
-        statement: 'Mempraktikkan variasi gerak dasar lokomotor dan manipulatif menendang bola',
         tp: 'Mempraktikkan variasi gerak dasar lokomotor dan manipulatif menendang bola',
         order: 1,
       } as any,
@@ -576,13 +567,10 @@ async function runRegressionSuite() {
   const tpSeniMusik: TPData = {
     id: 'tp-seni',
     academicSettingId: settingSeniMusik.id,
-    workflowStatus: 'SIAP',
-    needsReview: false,
     items: [
       {
         id: 'tp-s-1',
         code: 'TP-SM-1',
-        statement: 'Menyanyikan lagu daerah dengan intonasi yang tepat',
         tp: 'Menyanyikan lagu daerah dengan intonasi yang tepat',
         order: 1,
       } as any,
@@ -946,8 +934,6 @@ async function runRegressionSuite() {
   const tpEmptyText: TPData = {
     id: 'tp-empty',
     academicSettingId: 'setting-sd-4',
-    workflowStatus: 'SIAP',
-    needsReview: false,
     items: [
       {
         id: 'tp-empty-1',
@@ -1023,8 +1009,6 @@ async function runRegressionSuite() {
   const tpForBJ: TPData = {
     id: 'tp-bj',
     academicSettingId: 'setting-sd-4',
-    workflowStatus: 'SIAP',
-    needsReview: false,
     items: [
       {
         id: 'tp-mat-unmatch',
