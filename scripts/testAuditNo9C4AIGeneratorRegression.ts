@@ -83,6 +83,8 @@ async function runRegressionSuite() {
   const mockTPMat: TPData = {
     id: 'tp-data-mat',
     academicSettingId: 'setting-sd-4',
+    workflowStatus: 'SIAP',
+    needsReview: false,
     items: [
       {
         id: 'tp-mat-1',
@@ -109,6 +111,8 @@ async function runRegressionSuite() {
       approach: 'deskripsi',
       indicators: ['Menyebutkan contoh pecahan senilai'],
       levels: [],
+      workflowStatus: 'SIAP',
+      needsReview: false,
       updatedAt: new Date().toISOString(),
     },
     {
@@ -119,6 +123,8 @@ async function runRegressionSuite() {
       approach: 'deskripsi',
       indicators: ['Menghitung penyelesaian pecahan'],
       levels: [],
+      workflowStatus: 'SIAP',
+      needsReview: false,
       updatedAt: new Date().toISOString(),
     },
   ];
@@ -353,6 +359,109 @@ async function runRegressionSuite() {
   assert(systemPrompt.includes('AI ADALAH CONTENT GENERATOR'), 'Case 21: System prompt establishes strict generator role');
   assert(systemPrompt.includes('JANGAN mengubah atau mengarang Tujuan Pembelajaran'), 'Case 22: System prompt forbids inventing curriculum');
   assert(userPrompt.includes('Kelas 4'), 'Case 23: User prompt includes grade context');
+
+  // ----------------------------------------------------
+  // B.1 INTEGRATION: MULTI-INSTRUMENT COVERAGE
+  // ----------------------------------------------------
+
+  const multiInstrumentSpecB1: AssessmentGenerationSpec = {
+    ...spec,
+    plannedInstrumentTypes: [
+      'WRITTEN_TEST',
+      'PERFORMANCE',
+    ],
+    evidenceRecommendations: (
+      spec.evidenceRecommendations || []
+    ).map((rec) => ({
+      ...rec,
+      recommendedInstrumentTypes: [
+        'WRITTEN_TEST',
+        'PERFORMANCE',
+      ],
+      confidence: 'RULE_BASED',
+    })),
+    resolution: {
+      status: 'RESOLVED',
+      issues: [],
+    },
+  };
+
+  const multiInstrumentPlanB1 =
+    resolveAssessmentGenerationPlan({
+      generationSpec: multiInstrumentSpecB1,
+    });
+
+  const multiInstrumentTypesB1 = new Set(
+    multiInstrumentPlanB1.coverageUnits.map(
+      (unit) => unit.instrumentType
+    )
+  );
+
+  assert(
+    multiInstrumentTypesB1.has('WRITTEN_TEST') &&
+      multiInstrumentTypesB1.has('PERFORMANCE'),
+    'B.1 Case 1: GenerationPlan retains every canonical planned instrument'
+  );
+
+  assert(
+    new Set(
+      multiInstrumentPlanB1.coverageUnits.map(
+        (unit) => unit.id
+      )
+    ).size ===
+      multiInstrumentPlanB1.coverageUnits.length,
+    'B.1 Case 2: Multi-instrument coverage IDs remain globally unique'
+  );
+
+  const multiInstrumentGuardB1 =
+    validatePreGenerationGuards({
+      generationPlan: multiInstrumentPlanB1,
+    });
+
+  assert(
+    multiInstrumentGuardB1.valid === true,
+    'B.1 Case 3: Valid multi-instrument GenerationPlan passes pre-generation guards',
+    multiInstrumentGuardB1.issues
+      .map((issue) => issue.code)
+      .join(', ')
+  );
+
+  const multiInstrumentContractB1 =
+    buildGenerationContract(
+      multiInstrumentPlanB1
+    );
+
+  const contractInstrumentTypesB1 = new Set(
+    multiInstrumentContractB1.units.map(
+      (unit) => unit.instrumentType
+    )
+  );
+
+  assert(
+    multiInstrumentContractB1.units.length ===
+      multiInstrumentPlanB1.coverageUnits.length &&
+      contractInstrumentTypesB1.has(
+        'WRITTEN_TEST'
+      ) &&
+      contractInstrumentTypesB1.has(
+        'PERFORMANCE'
+      ),
+    'B.1 Case 4: GenerationContract preserves all multi-instrument coverage units 1:1'
+  );
+
+  assert(
+    multiInstrumentContractB1.units.some(
+      (unit) =>
+        unit.instrumentType === 'WRITTEN_TEST' &&
+        unit.allocationUnit === 'ITEM'
+    ) &&
+      multiInstrumentContractB1.units.some(
+        (unit) =>
+          unit.instrumentType === 'PERFORMANCE' &&
+          unit.allocationUnit === 'TASK'
+      ),
+    'B.1 Case 5: Downstream generation contract preserves semantic allocation per instrument'
+  );
 
   // ----------------------------------------------------
   // SECTION 3: RUNTIME PARSING, VALIDATION & REJECTION RULES

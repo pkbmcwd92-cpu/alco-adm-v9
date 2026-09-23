@@ -52,6 +52,8 @@ async function runRegressionSuite() {
   const mockTPMat: TPData = {
     id: 'tp-data-mat',
     academicSettingId: 'setting-sd-4',
+    workflowStatus: 'SIAP',
+    needsReview: false,
     items: [
       {
         id: 'tp-mat-1',
@@ -78,6 +80,8 @@ async function runRegressionSuite() {
       approach: 'deskripsi',
       indicators: ['Menyebutkan contoh pecahan senilai'],
       levels: [],
+      workflowStatus: 'SIAP',
+      needsReview: false,
       updatedAt: new Date().toISOString(),
     },
     {
@@ -88,6 +92,8 @@ async function runRegressionSuite() {
       approach: 'deskripsi',
       indicators: ['Membandingkan dua pecahan'],
       levels: [],
+      workflowStatus: 'SIAP',
+      needsReview: false,
       updatedAt: new Date().toISOString(),
     },
   ];
@@ -229,7 +235,7 @@ async function runRegressionSuite() {
   );
 
   // ==========================================
-  // CASE I: Tidak menggunakan instrument pertama (plannedInstrumentTypes[0]) jika ambigu
+  // CASE I: Multi-instrument canonical plan expands coverage, never first-item fallback
   // ==========================================
   const specAmbiguousInstruments: AssessmentGenerationSpec = {
     ...baseSpecResolved,
@@ -246,11 +252,22 @@ async function runRegressionSuite() {
     ],
     resolution: { status: 'RESOLVED', issues: [] },
   };
-  const planI = resolveAssessmentGenerationPlan({ generationSpec: specAmbiguousInstruments });
+  const planI = resolveAssessmentGenerationPlan({
+    generationSpec: specAmbiguousInstruments,
+  });
+
+  const planIInstrumentTypes = new Set(
+    planI.coverageUnits.map((u) => u.instrumentType)
+  );
+
   assert(
-    planI.coverageUnits.some((u) => u.instrumentType === undefined) &&
-      planI.resolution.status === 'NEEDS_REVIEW',
-    'Case I: Ambiguous multi-instrument plan does NOT blindly select plannedInstrumentTypes[0]'
+    planI.coverageUnits.length === 4 &&
+      planIInstrumentTypes.has('WRITTEN_TEST') &&
+      planIInstrumentTypes.has('PERFORMANCE') &&
+      planI.coverageUnits.every(
+        (u) => u.instrumentType !== undefined
+      ),
+    'Case I: Multi-instrument canonical plan expands every criterion across all confirmed instruments'
   );
 
   // ==========================================
@@ -263,7 +280,7 @@ async function runRegressionSuite() {
   );
 
   // ==========================================
-  // CASE K: Multiple instruments + exactly one recommendation intersection -> resolve
+  // CASE K: Recommendation is advisory; canonical multi-instrument plan wins
   // ==========================================
   const specIntersectOne: AssessmentGenerationSpec = {
     ...baseSpecResolved,
@@ -281,19 +298,40 @@ async function runRegressionSuite() {
     resolution: { status: 'RESOLVED', issues: [] },
   };
   const planK = resolveAssessmentGenerationPlan({ generationSpec: specIntersectOne });
+  const planKTypes = new Set(
+    planK.coverageUnits.map((u) => u.instrumentType)
+  );
+
   assert(
-    planK.coverageUnits.every((u) => u.instrumentType === 'WRITTEN_TEST'),
-    'Case K: Multiple planned instruments with exactly 1 intersection resolves cleanly'
+    planK.coverageUnits.length === 4 &&
+      planKTypes.has('WRITTEN_TEST') &&
+      planKTypes.has('OBSERVATION') &&
+      planK.coverageUnits.every(
+        (u) => u.instrumentType !== undefined
+      ),
+    'Case K: Recommendation intersection does not remove another canonical planned instrument'
   );
 
   // ==========================================
   // CASE L: Multiple instruments ambiguous -> NEEDS_REVIEW
   // ==========================================
-  const planL = resolveAssessmentGenerationPlan({ generationSpec: specAmbiguousInstruments });
+  const planL = resolveAssessmentGenerationPlan({
+    generationSpec: specAmbiguousInstruments,
+  });
+
   assert(
-    planL.resolution.status === 'NEEDS_REVIEW' &&
-      planL.resolution.issues.some((i) => i.code === 'INSTRUMENT_RESOLUTION_AMBIGUOUS'),
-    'Case L: Ambiguous instruments trigger NEEDS_REVIEW with INSTRUMENT_RESOLUTION_AMBIGUOUS'
+    !planL.resolution.issues.some(
+      (issue) =>
+        issue.code ===
+        'INSTRUMENT_RESOLUTION_AMBIGUOUS'
+    ) &&
+      planL.coverageUnits.some(
+        (u) => u.instrumentType === 'WRITTEN_TEST'
+      ) &&
+      planL.coverageUnits.some(
+        (u) => u.instrumentType === 'PERFORMANCE'
+      ),
+    'Case L: Multiple canonical instruments never create INSTRUMENT_RESOLUTION_AMBIGUOUS'
   );
 
   // ==========================================
@@ -583,6 +621,62 @@ async function runRegressionSuite() {
   );
 
   // ==========================================
+  // CASE AJ-B1: Instrument-aware deterministic coverage IDs
+  // ==========================================
+  const writtenCoverageId = createDeterministicCoverageId(
+    'tp-mat-1',
+    'crit-mat-1',
+    'WRITTEN_TEST'
+  );
+
+  const performanceCoverageId =
+    createDeterministicCoverageId(
+      'tp-mat-1',
+      'crit-mat-1',
+      'PERFORMANCE'
+    );
+
+  assert(
+    (writtenCoverageId as string) !== (performanceCoverageId as string) &&
+      writtenCoverageId ===
+        'coverage:tp-mat-1:crit-mat-1:written_test' &&
+      performanceCoverageId ===
+        'coverage:tp-mat-1:crit-mat-1:performance',
+    'Case AJ-B1: Same objective/criterion with different instruments receives distinct deterministic coverage IDs'
+  );
+
+  // ==========================================
+  // CASE AJ-B1-2: 2 criteria × 2 instruments = 4 unique coverage units
+  // ==========================================
+  assert(
+    planI.coverageUnits.length === 4 &&
+      new Set(
+        planI.coverageUnits.map((u) => u.id)
+      ).size === 4 &&
+      planI.coverageUnits.filter(
+        (u) =>
+          u.criterionId === 'crit-mat-1' &&
+          u.instrumentType === 'WRITTEN_TEST'
+      ).length === 1 &&
+      planI.coverageUnits.filter(
+        (u) =>
+          u.criterionId === 'crit-mat-1' &&
+          u.instrumentType === 'PERFORMANCE'
+      ).length === 1 &&
+      planI.coverageUnits.filter(
+        (u) =>
+          u.criterionId === 'crit-mat-2' &&
+          u.instrumentType === 'WRITTEN_TEST'
+      ).length === 1 &&
+      planI.coverageUnits.filter(
+        (u) =>
+          u.criterionId === 'crit-mat-2' &&
+          u.instrumentType === 'PERFORMANCE'
+      ).length === 1,
+    'Case AJ-B1-2: Coverage generation performs exact criterion × instrument cross-product'
+  );
+
+  // ==========================================
   // CASE AK: Repeated build -> ID sama
   // ==========================================
   const planRun1 = resolveAssessmentGenerationPlan({ generationSpec: baseSpecResolved });
@@ -682,10 +776,21 @@ async function runRegressionSuite() {
     ],
     resolution: { status: 'RESOLVED', issues: [] },
   };
-  const planAS = resolveAssessmentGenerationPlan({ generationSpec: specMultiNoIntersect });
+  const planAS = resolveAssessmentGenerationPlan({
+    generationSpec: specMultiNoIntersect,
+  });
+
+  const planASTypes = new Set(
+    planAS.coverageUnits.map((u) => u.instrumentType)
+  );
+
   assert(
-    planAS.coverageUnits.every((u) => u.instrumentType === undefined),
-    'Case AS: Zero intersection between planned and recommended does NOT fallback to planned[0]'
+    planASTypes.has('WRITTEN_TEST') &&
+      planASTypes.has('PORTFOLIO') &&
+      planAS.coverageUnits.every(
+        (u) => u.instrumentType !== undefined
+      ),
+    'Case AS: Zero recommendation intersection never deletes canonical planned instruments'
   );
 
   // ==========================================
@@ -825,18 +930,34 @@ async function runRegressionSuite() {
   );
 
   // ==========================================
-  // CASE BD: Ambiguous instrument -> instrumentType undefined, allocationUnit undefined, recommendedCount undefined, NEEDS_REVIEW
+  // CASE BD: Multi-instrument units retain semantic allocation per instrument
   // ==========================================
-  const planBD = resolveAssessmentGenerationPlan({ generationSpec: specAmbiguousInstruments });
+  const planBD = resolveAssessmentGenerationPlan({
+    generationSpec: specAmbiguousInstruments,
+  });
+
+  const writtenUnitsBD = planBD.coverageUnits.filter(
+    (u) => u.instrumentType === 'WRITTEN_TEST'
+  );
+
+  const performanceUnitsBD = planBD.coverageUnits.filter(
+    (u) => u.instrumentType === 'PERFORMANCE'
+  );
+
   assert(
-    planBD.coverageUnits.every(
-      (u) =>
-        u.instrumentType === undefined &&
-        u.allocationUnit === undefined &&
-        u.recommendedCount === undefined &&
-        u.status === 'NEEDS_REVIEW'
-    ),
-    'Case BD: Ambiguous instrument has instrumentType=undefined, allocationUnit=undefined, recommendedCount=undefined, status=NEEDS_REVIEW'
+    writtenUnitsBD.length === 2 &&
+      performanceUnitsBD.length === 2 &&
+      writtenUnitsBD.every(
+        (u) =>
+          u.allocationUnit === 'ITEM' &&
+          u.recommendedCount === 1
+      ) &&
+      performanceUnitsBD.every(
+        (u) =>
+          u.allocationUnit === 'TASK' &&
+          u.recommendedCount === 1
+      ),
+    'Case BD: Multi-instrument coverage retains correct semantic allocation for every instrument'
   );
 
   // ==========================================

@@ -45,13 +45,31 @@ const VALID_INSTRUMENT_TYPES: Set<AssessmentInstrumentType> = new Set([
  */
 export function createDeterministicCoverageId(
   objectiveRefId: string,
-  criterionId?: string
+  criterionId?: string,
+  instrumentType?: string
 ): string {
-  const cleanObjId = (objectiveRefId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+  const cleanObjId = (objectiveRefId || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_');
+
   const cleanCritId = criterionId
     ? criterionId.trim().replace(/[^a-zA-Z0-9_-]/g, '_')
     : 'objective';
-  return `coverage:${cleanObjId}:${cleanCritId}`;
+
+  const baseId = `coverage:${cleanObjId}:${cleanCritId}`;
+
+  // Backward-compatible helper behavior for legacy/two-argument callers.
+  // Production B.1 coverage generation MUST always pass instrumentType.
+  if (typeof instrumentType !== 'string' || instrumentType.trim() === '') {
+    return baseId;
+  }
+
+  const cleanInstrumentType = instrumentType
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  return `${baseId}:${cleanInstrumentType}`;
 }
 
 /**
@@ -285,26 +303,29 @@ export function resolveAssessmentGenerationPlan(
       associatedCritIds.length > 0 ? associatedCritIds : [undefined];
 
     for (const targetCritId of critTargets) {
-      const unitIssues: AssessmentGenerationIssue[] = [];
-      const unitProvenance: AssessmentGenerationRule[] = [];
+      const baseUnitIssues: AssessmentGenerationIssue[] = [];
+      const baseUnitProvenance: AssessmentGenerationRule[] = [];
 
-      // A. Deterministic ID
-      const unitId = createDeterministicCoverageId(obj.id, targetCritId);
-
-      // B. Resolve Evidence Type
+      // A. Resolve Evidence Recommendation once for this objective/criterion.
+      // Evidence recommendation remains advisory and MUST NOT remove
+      // canonical instruments selected in AssessmentPlan.
       const matchingRec = evidenceRecs.find(
         (r) =>
           r.objectiveRefId === obj.id &&
-          (targetCritId ? r.criterionId === targetCritId || !r.criterionId : true)
+          (targetCritId
+            ? r.criterionId === targetCritId || !r.criterionId
+            : true)
       );
 
       let resolvedEvidenceType: AssessmentEvidenceType | undefined = undefined;
+
       if (matchingRec) {
         if (matchingRec.evidenceTypes.length === 1) {
           resolvedEvidenceType = matchingRec.evidenceTypes[0];
         } else if (matchingRec.evidenceTypes.length > 1) {
           resolvedEvidenceType = undefined;
-          unitIssues.push({
+
+          baseUnitIssues.push({
             code: 'EVIDENCE_RECOMMENDATION_AMBIGUOUS',
             severity: 'REVIEW',
             message: `Terdapat beberapa tipe bukti yang direkomendasikan (${matchingRec.evidenceTypes.join(
@@ -315,26 +336,27 @@ export function resolveAssessmentGenerationPlan(
           });
         } else {
           resolvedEvidenceType = undefined;
-          unitIssues.push({
+
+          baseUnitIssues.push({
             code: 'EVIDENCE_RECOMMENDATION_EMPTY',
             severity: 'REVIEW',
-            message: `Tidak ada tipe bukti yang direkomendasikan untuk kompetensi ini.`,
+            message: 'Tidak ada tipe bukti yang direkomendasikan untuk kompetensi ini.',
             objectiveRefId: obj.id,
             criterionId: targetCritId,
           });
         }
 
         if (matchingRec.confidence === 'NEEDS_TEACHER_REVIEW') {
-          unitIssues.push({
+          baseUnitIssues.push({
             code: 'EVIDENCE_CONFIDENCE_REVIEW',
             severity: 'REVIEW',
-            message: `Rekomendasi bukti memerlukan konfirmasi/telaah oleh guru.`,
+            message: 'Rekomendasi bukti memerlukan konfirmasi/telaah oleh guru.',
             objectiveRefId: obj.id,
             criterionId: targetCritId,
           });
         }
       } else {
-        unitIssues.push({
+        baseUnitIssues.push({
           code: 'EVIDENCE_RECOMMENDATION_NOT_FOUND',
           severity: 'REVIEW',
           message: `Rekomendasi bukti tidak ditemukan pada spesifikasi untuk kompetensi ID "${obj.id}".`,
@@ -343,122 +365,151 @@ export function resolveAssessmentGenerationPlan(
         });
       }
 
-      // C. Resolve Instrument Type (Canonical Plan Wins)
-      let resolvedInstrumentType: AssessmentInstrumentType | undefined = undefined;
-
-      if (plannedInstruments.length === 1) {
-        const singlePlanned = plannedInstruments[0];
-        if (!VALID_INSTRUMENT_TYPES.has(singlePlanned)) {
-          resolvedInstrumentType = undefined;
-          unitIssues.push({
-            code: 'UNKNOWN_INSTRUMENT_TYPE',
-            severity: 'BLOCKING',
-            message: `Tipe instrumen "${singlePlanned}" tidak dikenal dalam sistem.`,
-            objectiveRefId: obj.id,
-            criterionId: targetCritId,
-          });
-        } else {
-          resolvedInstrumentType = singlePlanned;
-        }
-      } else if (plannedInstruments.length > 1) {
-        const recommended = matchingRec?.recommendedInstrumentTypes || [];
-        const intersected = recommended.filter((t) => plannedInstruments.includes(t));
-
-        if (intersected.length === 1) {
-          const singleIntersected = intersected[0];
-          if (!VALID_INSTRUMENT_TYPES.has(singleIntersected)) {
-            resolvedInstrumentType = undefined;
-            unitIssues.push({
-              code: 'UNKNOWN_INSTRUMENT_TYPE',
-              severity: 'BLOCKING',
-              message: `Tipe instrumen "${singleIntersected}" tidak dikenal dalam sistem.`,
-              objectiveRefId: obj.id,
-              criterionId: targetCritId,
-            });
-          } else {
-            resolvedInstrumentType = singleIntersected;
-          }
-        } else if (intersected.length === 0) {
-          resolvedInstrumentType = undefined;
-          unitIssues.push({
-            code: 'INSTRUMENT_RESOLUTION_AMBIGUOUS',
-            severity: 'REVIEW',
-            message: `Rencana Asesmen memuat beberapa instrumen (${plannedInstruments.join(
-              ', '
-            )}), namun tidak ada irisan dengan rekomendasi pedagogis (${recommended.join(
-              ', '
-            )}).`,
-            objectiveRefId: obj.id,
-            criterionId: targetCritId,
-          });
-        } else {
-          resolvedInstrumentType = undefined;
-          unitIssues.push({
-            code: 'INSTRUMENT_RESOLUTION_AMBIGUOUS',
-            severity: 'REVIEW',
-            message: `Terdapat lebih dari satu instrumen yang selaras (${intersected.join(
-              ', '
-            )}). Pemilihan instrumen memerlukan telaah guru.`,
-            objectiveRefId: obj.id,
-            criterionId: targetCritId,
-          });
-        }
-      }
-
-      // D. Allocation Unit (Never default unknown/unresolved to ITEM)
-      const allocationUnit = mapInstrumentToAllocationUnit(resolvedInstrumentType);
-
-      // E. Cognitive Demand (Conservative, no fake HOTS)
+      // B. Cognitive demand belongs to objective/criterion context,
+      // therefore it is resolved once and reused for every confirmed instrument.
       const targetCritObj = targetCritId
         ? specCriteria.find((c) => c.id === targetCritId)
         : undefined;
+
       const textToAnalyze = targetCritObj
         ? `${obj.text} ${targetCritObj.name} ${targetCritObj.description || ''}`
         : obj.text;
 
-      const cognitiveDemand = resolveConservativeCognitiveDemand(textToAnalyze);
+      const cognitiveDemand =
+        resolveConservativeCognitiveDemand(textToAnalyze);
+
       if (cognitiveDemand) {
-        unitProvenance.push(PROV_PEDAGOGICAL_COGNITIVE_DEMAND);
+        baseUnitProvenance.push(
+          PROV_PEDAGOGICAL_COGNITIVE_DEMAND
+        );
       }
 
-      // F. Difficulty Target, Stimulus, Indicator, Material (Strictly NO FAKE DATA)
-      const difficultyTarget: AssessmentDifficultyTarget | undefined = undefined;
-      const stimulusType: AssessmentStimulusType | undefined = undefined;
-      const assessmentIndicator: string | undefined = undefined;
-      const materialOrContext: string | undefined = undefined;
+      // C. Expand canonical teacher-confirmed instruments.
+      //
+      // B.1 CONTRACT:
+      // Objective × Criterion × Planned Instrument = Coverage Unit.
+      //
+      // Recommendation MUST NOT collapse multiple canonical instruments
+      // into one instrument.
+      for (
+        let instrumentIndex = 0;
+        instrumentIndex < plannedInstruments.length;
+        instrumentIndex++
+      ) {
+        const plannedInstrument = plannedInstruments[instrumentIndex];
 
-      // G. Recommended Count (Only assigned when allocation semantics are resolved)
-      let recommendedCount: number | undefined = undefined;
-      if (allocationUnit !== undefined) {
-        recommendedCount = 1;
-        unitProvenance.push(PROV_MINIMUM_COVERAGE_ALLOCATION);
+        const unitIssues: AssessmentGenerationIssue[] = [
+          ...baseUnitIssues,
+        ];
+
+        const unitProvenance: AssessmentGenerationRule[] = [
+          ...baseUnitProvenance,
+        ];
+
+        const instrumentIdPart =
+          typeof plannedInstrument === 'string' &&
+          plannedInstrument.trim() !== ''
+            ? plannedInstrument
+            : `unknown_${instrumentIndex + 1}`;
+
+        const unitId = createDeterministicCoverageId(
+          obj.id,
+          targetCritId,
+          instrumentIdPart
+        );
+
+        let resolvedInstrumentType:
+          | AssessmentInstrumentType
+          | undefined = undefined;
+
+        if (!VALID_INSTRUMENT_TYPES.has(plannedInstrument)) {
+          unitIssues.push({
+            code: 'UNKNOWN_INSTRUMENT_TYPE',
+            severity: 'BLOCKING',
+            message: `Tipe instrumen "${plannedInstrument}" tidak dikenal dalam sistem.`,
+            objectiveRefId: obj.id,
+            criterionId: targetCritId,
+          });
+        } else {
+          resolvedInstrumentType = plannedInstrument;
+        }
+
+        // D. Allocation semantic follows each canonical instrument.
+        // Never default unresolved/unknown instruments to ITEM.
+        const allocationUnit =
+          mapInstrumentToAllocationUnit(
+            resolvedInstrumentType
+          );
+
+        // E. These fields remain unresolved unless real data exists.
+        // NO DATA > FAKE DATA.
+        const difficultyTarget:
+          | AssessmentDifficultyTarget
+          | undefined = undefined;
+
+        const stimulusType:
+          | AssessmentStimulusType
+          | undefined = undefined;
+
+        const assessmentIndicator:
+          | string
+          | undefined = undefined;
+
+        const materialOrContext:
+          | string
+          | undefined = undefined;
+
+        // F. Minimum one semantic unit for each resolved coverage unit.
+        let recommendedCount:
+          | number
+          | undefined = undefined;
+
+        if (allocationUnit !== undefined) {
+          recommendedCount = 1;
+
+          unitProvenance.push(
+            PROV_MINIMUM_COVERAGE_ALLOCATION
+          );
+        }
+
+        // G. Unit status
+        let unitStatus:
+          | 'RESOLVED'
+          | 'NEEDS_REVIEW'
+          | 'BLOCKED' = 'RESOLVED';
+
+        if (
+          unitIssues.some(
+            (issue) => issue.severity === 'BLOCKING'
+          )
+        ) {
+          unitStatus = 'BLOCKED';
+        } else if (
+          unitIssues.some(
+            (issue) => issue.severity === 'REVIEW'
+          )
+        ) {
+          unitStatus = 'NEEDS_REVIEW';
+        }
+
+        coverageUnits.push({
+          id: unitId,
+          objectiveRefId: obj.id,
+          criterionId: targetCritId,
+          evidenceType: resolvedEvidenceType,
+          instrumentType: resolvedInstrumentType,
+          allocationUnit,
+          recommendedCount,
+          cognitiveDemand,
+          stimulusType,
+          difficultyTarget,
+          assessmentIndicator,
+          materialOrContext,
+          provenance: unitProvenance,
+          status: unitStatus,
+          issues: unitIssues,
+        });
       }
-
-      // H. Evaluate Unit Status
-      let unitStatus: 'RESOLVED' | 'NEEDS_REVIEW' | 'BLOCKED' = 'RESOLVED';
-      if (unitIssues.some((i) => i.severity === 'BLOCKING')) {
-        unitStatus = 'BLOCKED';
-      } else if (unitIssues.some((i) => i.severity === 'REVIEW')) {
-        unitStatus = 'NEEDS_REVIEW';
-      }
-
-      coverageUnits.push({
-        id: unitId,
-        objectiveRefId: obj.id,
-        criterionId: targetCritId,
-        evidenceType: resolvedEvidenceType,
-        instrumentType: resolvedInstrumentType,
-        allocationUnit,
-        recommendedCount,
-        cognitiveDemand,
-        stimulusType,
-        difficultyTarget,
-        assessmentIndicator,
-        materialOrContext,
-        provenance: unitProvenance,
-        status: unitStatus,
-        issues: unitIssues,
-      });
     }
   }
 
