@@ -56,7 +56,8 @@ export async function reviewAssessmentPackageQuality(
       code: 'QUALITY_REVIEW_SKIPPED',
       status: 'REVIEW',
       severity: 'REVIEW',
-      message: 'AI Quality Reviewer tidak dikonfigurasi.',
+      message:
+        'AI Quality Reviewer tidak dikonfigurasi. Pemeriksaan kualitas AI tidak dijalankan; guru perlu meninjau perangkat secara manual sebelum konfirmasi SIAP.',
       source: 'AI_QUALITY_REVIEWER',
     });
     return {
@@ -64,7 +65,7 @@ export async function reviewAssessmentPackageQuality(
         status: 'REVIEW',
         findings,
       },
-      reviewerStatus: 'REVIEW_UNAVAILABLE',
+      reviewerStatus: 'NOT_REQUESTED',
     };
   }
 

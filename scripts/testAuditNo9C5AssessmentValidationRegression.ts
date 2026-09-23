@@ -1514,6 +1514,82 @@ async function runAll60Tests() {
     );
   });
 
+  // Test 64 — Quality reviewer not configured is REVIEW / NOT_REQUESTED
+  await test(
+    '64. Quality reviewer not configured is REVIEW / NOT_REQUESTED, not unavailable',
+    async () => {
+      const result = await reviewAssessmentPackageQuality(
+        validPackage,
+        validPlan
+      );
+
+      assert(
+        result.section.status === 'REVIEW',
+        'Missing optional quality reviewer must remain REVIEW'
+      );
+
+      assert(
+        result.reviewerStatus === 'NOT_REQUESTED',
+        'Missing optional quality reviewer must be NOT_REQUESTED'
+      );
+
+      assert(
+        result.section.findings.some(
+          (f) => f.code === 'QUALITY_REVIEW_SKIPPED'
+        ),
+        'QUALITY_REVIEW_SKIPPED finding must remain visible'
+      );
+    }
+  );
+
+  // Test 65 — Configured quality reviewer failure remains REVIEW_UNAVAILABLE
+  await test(
+    '65. Configured quality reviewer failure remains REVIEW_UNAVAILABLE',
+    async () => {
+      const throwingProvider: AssessmentQualityReviewProvider = {
+        review: async () => {
+          throw new Error('provider unavailable');
+        },
+      };
+
+      const result = await reviewAssessmentPackageQuality(
+        validPackage,
+        validPlan,
+        undefined,
+        undefined,
+        throwingProvider
+      );
+
+      assert(
+        result.section.status === 'REVIEW',
+        'Provider failure must remain REVIEW'
+      );
+
+      assert(
+        result.reviewerStatus === 'REVIEW_UNAVAILABLE',
+        'Configured but failed reviewer must remain REVIEW_UNAVAILABLE'
+      );
+    }
+  );
+
+  // Test 66 — Validation report preserves manual-review quality state when quality reviewer is unconfigured
+  await test(
+    '66. Validation report preserves manual-review quality state when quality reviewer is unconfigured',
+    async () => {
+      const manualReviewReport = await validateGeneratedAssessment({
+        assessmentPackage: validPackage,
+        generationPlan: validPlan,
+        validationContext: mockValidationContext,
+      });
+
+      assert(
+        manualReviewReport.quality.status === 'REVIEW' &&
+          manualReviewReport.reviewerStatus === 'NOT_REQUESTED',
+        'B.1.2d: Validation report preserves manual-review quality state'
+      );
+    }
+  );
+
   console.log(`\n=== ALL ${passedCount} AUDIT 9C.5 REGRESSION TESTS PASSED PERFECTLY! ===`);
 }
 

@@ -727,22 +727,34 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
 
           {uiState === 'READY_FOR_CONFIRMATION' && (
             <div className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-              validationReport?.overallStatus === 'FAIL' 
+              validationReport?.overallStatus === 'REVIEW'
+                ? 'bg-amber-50 border-amber-200 text-amber-900'
+                : validationReport?.overallStatus === 'FAIL' 
                 ? 'bg-red-50 border-red-200 text-red-800' 
                 : 'bg-emerald-50 border-emerald-200 text-emerald-800'
             }`}>
               <div className="flex items-start gap-2.5">
-                {validationReport?.overallStatus === 'FAIL' ? (
+                {validationReport?.overallStatus === 'REVIEW' ? (
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                ) : validationReport?.overallStatus === 'FAIL' ? (
                   <AlertOctagon className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                 ) : (
                   <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
                 )}
                 <div>
                   <span className="font-bold text-sm">
-                    Hasil Validasi Kualitas: Siap Dikonfirmasi
+                    {validationReport?.overallStatus === 'REVIEW'
+                      ? 'Perlu Pemeriksaan Manual Sebelum Konfirmasi'
+                      : validationReport?.overallStatus === 'FAIL'
+                      ? 'Validasi Gagal'
+                      : 'Hasil Validasi: Siap Dikonfirmasi'}
                   </span>
                   <p className="text-xs">
-                    Perangkat telah melewati pemeriksaan dan siap dikonfirmasi oleh guru.
+                    {validationReport?.overallStatus === 'REVIEW'
+                      ? 'Tidak ada error blocking, tetapi terdapat peringatan atau catatan yang perlu ditinjau guru. Setelah seluruh catatan diperiksa, guru dapat mengonfirmasi perangkat berstatus SIAP.'
+                      : validationReport?.overallStatus === 'FAIL'
+                      ? 'Terdapat kendala struktural yang perlu diperbaiki terlebih dahulu.'
+                      : 'Perangkat telah melewati pemeriksaan otomatis dan siap ditinjau akhir serta dikonfirmasi oleh guru.'}
                   </p>
                 </div>
               </div>
@@ -760,9 +772,16 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
                     const res = confirmAssessmentPackage(activePackage, validationContext);
                     onSaveAssessmentPackage(res.package);
                   }}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow"
+                  className={`px-4 py-2 ${
+                    validationReport?.overallStatus === 'REVIEW'
+                      ? 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-emerald-600 hover:bg-emerald-700'
+                  } text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow`}
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Konfirmasi & Tandai SIAP
+                  <CheckCircle2 className="w-3.5 h-3.5" />{' '}
+                  {validationReport?.overallStatus === 'REVIEW'
+                    ? 'Konfirmasi Setelah Review & Tandai SIAP'
+                    : 'Konfirmasi & Tandai SIAP'}
                 </button>
               </div>
             </div>

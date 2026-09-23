@@ -35,6 +35,8 @@ const mockAcademicSetting = {
 
 const mockTPData = {
   id: 'tp-1',
+  workflowStatus: 'SIAP',
+  needsReview: false,
   items: [
     {
       id: 'tp-item-1',
@@ -115,6 +117,24 @@ const mockPassReport = {
   engineVersion: '1.0.0',
   createdAt: '2026-09-18T00:00:00.000Z',
   updatedAt: '2026-09-18T00:00:00.000Z',
+};
+
+const mockReviewReport = {
+  ...mockPassReport,
+  overallStatus: 'REVIEW' as const,
+  quality: {
+    status: 'REVIEW' as const,
+    findings: [
+      {
+        code: 'QUALITY_REVIEW_SKIPPED',
+        status: 'REVIEW' as const,
+        severity: 'REVIEW' as const,
+        message: 'AI Quality Reviewer tidak dikonfigurasi.',
+        source: 'AI_QUALITY_REVIEWER' as const,
+      },
+    ],
+  },
+  reviewerStatus: 'NOT_REQUESTED' as const,
 };
 
 async function runTests() {
@@ -653,22 +673,94 @@ async function runTests() {
       validationReport: { ...mockPassReport, overallStatus: 'FAIL' as const },
       confirmationEligible: true,
     });
-    assert(state === 'DRAFT_REVIEW', 'Should resolve to DRAFT_REVIEW');
+    assert(state === 'DRAFT_REVIEW', 'FAIL report must never enter READY_FOR_CONFIRMATION');
   });
 
-  await test('DRAFT_REVIEW when validationReport overallStatus is REVIEW', () => {
-    const state = resolveAssessmentGenerationUIState({
-      selectedPlanId: 'plan-1',
-      assessmentPlan: mockValidPlan,
-      academicSetting: mockAcademicSetting,
-      tp: mockTPData,
-      assessmentCriteria: mockAssessmentCriteria,
-      activePackage: mockDraftPackage,
-      validationReport: { ...mockPassReport, overallStatus: 'REVIEW' as const },
-      confirmationEligible: true,
-    });
-    assert(state === 'DRAFT_REVIEW', 'Should resolve to DRAFT_REVIEW');
-  });
+  await test(
+    'READY_FOR_CONFIRMATION when current report is REVIEW and canonical confirmation is eligible',
+    () => {
+      const state = resolveAssessmentGenerationUIState({
+        selectedPlanId: 'plan-1',
+        assessmentPlan: mockValidPlan,
+        academicSetting: mockAcademicSetting,
+        tp: mockTPData,
+        assessmentCriteria: mockAssessmentCriteria,
+        activePackage: mockDraftPackage,
+        validationReport: mockReviewReport,
+        confirmationEligible: true,
+      });
+      assert(
+        state === 'READY_FOR_CONFIRMATION',
+        'REVIEW report should allow explicit teacher confirmation when package has no canonical blocking errors'
+      );
+    }
+  );
+
+  await test(
+    'DRAFT_REVIEW when report is REVIEW but canonical confirmation is not eligible',
+    () => {
+      const state = resolveAssessmentGenerationUIState({
+        selectedPlanId: 'plan-1',
+        assessmentPlan: mockValidPlan,
+        academicSetting: mockAcademicSetting,
+        tp: mockTPData,
+        assessmentCriteria: mockAssessmentCriteria,
+        activePackage: mockDraftPackage,
+        validationReport: mockReviewReport,
+        confirmationEligible: false,
+      });
+      assert(
+        state === 'DRAFT_REVIEW',
+        'REVIEW must not bypass canonical package validation'
+      );
+    }
+  );
+
+  await test(
+    'DRAFT_REVIEW when REVIEW report is stale',
+    () => {
+      const state = resolveAssessmentGenerationUIState({
+        selectedPlanId: 'plan-1',
+        assessmentPlan: mockValidPlan,
+        academicSetting: mockAcademicSetting,
+        tp: mockTPData,
+        assessmentCriteria: mockAssessmentCriteria,
+        activePackage: {
+          ...mockDraftPackage,
+          revision: 2,
+        },
+        validationReport: mockReviewReport,
+        confirmationEligible: true,
+      });
+      assert(
+        state === 'DRAFT_REVIEW',
+        'Stale REVIEW report must not permit confirmation'
+      );
+    }
+  );
+
+  await test(
+    'DRAFT_REVIEW when validation overallStatus is unknown',
+    () => {
+      const state = resolveAssessmentGenerationUIState({
+        selectedPlanId: 'plan-1',
+        assessmentPlan: mockValidPlan,
+        academicSetting: mockAcademicSetting,
+        tp: mockTPData,
+        assessmentCriteria: mockAssessmentCriteria,
+        activePackage: mockDraftPackage,
+        validationReport: {
+          ...mockPassReport,
+          overallStatus: 'UNKNOWN' as any,
+        },
+        confirmationEligible: true,
+      });
+      assert(
+        state === 'DRAFT_REVIEW',
+        'Unknown validation status must fail closed'
+      );
+    }
+  );
 
   await test('DRAFT_REVIEW when validationReport packageRevision is stale (stale report)', () => {
     const state = resolveAssessmentGenerationUIState({
@@ -835,7 +927,7 @@ async function runTests() {
     assert(state === 'DRAFT_REVIEW', 'FAIL report must yield DRAFT_REVIEW');
   });
 
-  await test('REVIEW validation report results in DRAFT_REVIEW state', () => {
+  await test('REVIEW validation report results in READY_FOR_CONFIRMATION state when confirmationEligible is true', () => {
     const reviewReport = { ...mockPassReport, overallStatus: 'REVIEW' as const };
     const state = resolveAssessmentGenerationUIState({
       selectedPlanId: 'plan-1',
@@ -847,7 +939,7 @@ async function runTests() {
       validationReport: reviewReport,
       confirmationEligible: true,
     });
-    assert(state === 'DRAFT_REVIEW', 'REVIEW report must yield DRAFT_REVIEW');
+    assert(state === 'READY_FOR_CONFIRMATION', 'REVIEW report must allow READY_FOR_CONFIRMATION for manual confirmation');
   });
 
   await test('Stale package revision in validation report results in DRAFT_REVIEW state', () => {
