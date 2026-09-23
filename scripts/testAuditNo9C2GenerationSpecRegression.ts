@@ -57,16 +57,20 @@ async function runRegressionSuite() {
   const mockTPMat: TPData = {
     id: 'tp-data-mat',
     academicSettingId: 'setting-sd-4',
+    workflowStatus: 'SIAP',
+    needsReview: false,
     items: [
       {
         id: 'tp-mat-1',
         code: 'TP-M1',
+        statement: 'Memahami konsep pecahan senilai dan desimal dasar',
         tp: 'Memahami konsep pecahan senilai dan desimal dasar',
         order: 1,
       } as any,
       {
         id: 'tp-mat-2',
         code: 'TP-M2',
+        statement: 'Menghitung operasi pembagian dan perkalian bilangan cacah',
         tp: 'Menghitung operasi pembagian dan perkalian bilangan cacah',
         order: 2,
       } as any,
