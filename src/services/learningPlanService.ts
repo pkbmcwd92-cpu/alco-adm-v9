@@ -20,6 +20,17 @@ import {
   LearningResource,
 } from '../types';
 import { validateATPReferences } from './cpWorkflowService';
+import {
+  CANONICAL_GRADUATE_PROFILE_DIMENSIONS,
+  isCanonicalGraduateProfileDimension,
+  validateGraduateProfileDimensions,
+} from '../constants/graduateProfileDimensions';
+
+export {
+  CANONICAL_GRADUATE_PROFILE_DIMENSIONS,
+  isCanonicalGraduateProfileDimension,
+  validateGraduateProfileDimensions,
+};
 
 export const LEARNING_EXPERIENCE_PHASE_LABELS: Record<LearningExperiencePhase, string> = {
   UNDERSTAND: 'Memahami',
@@ -599,11 +610,21 @@ export function validateLearningPlan(
     }
   }
 
-  // 7. Validate Graduate Profile Dimensions duplicates
-  if (Array.isArray(plan.graduateProfileDimensions)) {
-    const uniqueDims = new Set(plan.graduateProfileDimensions);
-    if (uniqueDims.size !== plan.graduateProfileDimensions.length) {
-      warnings.push('Terdapat duplikasi nilai pada Dimensi Profil Lulusan (graduateProfileDimensions).');
+  // 7. Validate Graduate Profile Dimensions against 8 canonical values
+  if (plan.graduateProfileDimensions !== undefined) {
+    if (!Array.isArray(plan.graduateProfileDimensions)) {
+      errors.push('Dimensi Profil Lulusan (graduateProfileDimensions) harus berupa daftar (array).');
+    } else {
+      const invalidDims = plan.graduateProfileDimensions.filter(
+        (d) => typeof d === 'string' && d.trim().length > 0 && !isCanonicalGraduateProfileDimension(d)
+      );
+      if (invalidDims.length > 0) {
+        errors.push(`Dimensi Profil Lulusan tidak valid: ${invalidDims.join(', ')}`);
+      }
+      const uniqueDims = new Set(plan.graduateProfileDimensions.map((d) => typeof d === 'string' ? d.trim() : d));
+      if (uniqueDims.size !== plan.graduateProfileDimensions.length) {
+        warnings.push('Terdapat duplikasi nilai pada Dimensi Profil Lulusan (graduateProfileDimensions).');
+      }
     }
   }
 
@@ -671,12 +692,13 @@ export function validateLearningPlan(
       if (!plan.initialCompetency || typeof plan.initialCompetency !== 'string' || plan.initialCompetency.trim() === '') {
         finalizationErrors.push('Kompetensi Awal belum diisi.');
       }
-      const validDimensions = [
-        ...(Array.isArray(plan.graduateProfileDimensions) ? plan.graduateProfileDimensions : []),
-        ...(Array.isArray(plan.p3Dimensions) ? plan.p3Dimensions : []),
-      ].filter((d) => typeof d === 'string' && d.trim().length > 0);
-      if (validDimensions.length === 0) {
-        finalizationErrors.push('Dimensi Profil Lulusan belum dipilih.');
+      const dimValidation = validateGraduateProfileDimensions(plan.graduateProfileDimensions);
+      if (!dimValidation.isValid) {
+        if (dimValidation.invalidDimensions.length > 0) {
+          finalizationErrors.push(`Dimensi Profil Lulusan tidak valid: ${dimValidation.invalidDimensions.join(', ')}`);
+        } else {
+          finalizationErrors.push('Dimensi Profil Lulusan belum dipilih.');
+        }
       }
       const validResources = (plan.resources || []).filter(
         (r) =>

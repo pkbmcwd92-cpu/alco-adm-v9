@@ -967,8 +967,11 @@ export async function generatePdfDocument(
     fileName = `[Format_Kosong]_${fileName}`;
   }
 
+  const styleProfile = type === 'MODUL_AJAR' ? 'FORMAL_NEUTRAL' : 'DEFAULT';
+
   const builder = buildPdfFromOptions({
     orientation,
+    styleProfile,
     title,
     subTitle,
     school,

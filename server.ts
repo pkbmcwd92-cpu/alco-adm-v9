@@ -8,6 +8,7 @@ import {
   fallbackAnalyzeCP,
   fallbackRefineText,
 } from './server/curriculumFallback';
+import { validateGraduateProfileDimensions } from './src/constants/graduateProfileDimensions';
 
 dotenv.config();
 
@@ -577,8 +578,9 @@ function validateAILearningPlanPayload(data: any): { isValid: boolean; reason?: 
     return { isValid: false, reason: 'Kompetensi Awal (initialCompetency) kosong atau tidak valid' };
   }
 
-  if (!Array.isArray(data.graduateProfileDimensions) || data.graduateProfileDimensions.filter((d: any) => typeof d === 'string' && d.trim().length > 0).length === 0) {
-    return { isValid: false, reason: 'Dimensi Profil Lulusan (graduateProfileDimensions) kosong atau tidak valid' };
+  const dimVal = validateGraduateProfileDimensions(data.graduateProfileDimensions);
+  if (!dimVal.isValid) {
+    return { isValid: false, reason: dimVal.error || 'Dimensi Profil Lulusan (graduateProfileDimensions) kosong atau tidak valid' };
   }
 
   if (!Array.isArray(data.resources) || data.resources.filter((r: any) => r && typeof r === 'object' && ((typeof r.title === 'string' && r.title.trim().length > 0) || (typeof r.source === 'string' && r.source.trim().length > 0))).length === 0) {

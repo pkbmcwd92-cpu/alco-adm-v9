@@ -1,7 +1,14 @@
 import { jsPDF } from 'jspdf';
 import autoTable, { UserOptions } from 'jspdf-autotable';
 import { SchoolData, TeacherProfile, AcademicSetting } from '../../../../types';
-import { PDF_THEME, formatOfficialDate } from './pdfTheme';
+import {
+  PDF_THEME,
+  PDF_FORMAL_NEUTRAL_THEME,
+  formatOfficialDate,
+} from './pdfTheme';
+import type { PdfStyleProfile } from './pdfTheme';
+
+export type { PdfStyleProfile };
 
 export interface PdfTableColumn {
   header: string;
@@ -53,6 +60,7 @@ export type PdfDocumentSection =
 
 export interface PdfDocumentOptions {
   orientation?: 'portrait' | 'landscape';
+  styleProfile?: PdfStyleProfile;
   title: string;
   subTitle?: string;
   school: SchoolData;
@@ -72,6 +80,8 @@ export interface PdfDocumentOptions {
 export class PdfDocumentBuilder {
   private doc: jsPDF;
   private orientation: 'portrait' | 'landscape';
+  private styleProfile: PdfStyleProfile;
+  private theme: typeof PDF_THEME | typeof PDF_FORMAL_NEUTRAL_THEME;
   private pageWidth: number;
   private pageHeight: number;
   private marginLeft: number;
@@ -80,8 +90,14 @@ export class PdfDocumentBuilder {
   private marginBottom: number;
   private currentY: number;
 
-  constructor(orientation: 'portrait' | 'landscape' = 'portrait') {
+  constructor(
+    orientation: 'portrait' | 'landscape' = 'portrait',
+    styleProfile: PdfStyleProfile = 'DEFAULT'
+  ) {
     this.orientation = orientation;
+    this.styleProfile = styleProfile;
+    this.theme = styleProfile === 'FORMAL_NEUTRAL' ? PDF_FORMAL_NEUTRAL_THEME : PDF_THEME;
+
     this.doc = new jsPDF({
       orientation,
       unit: 'mm',
@@ -93,12 +109,20 @@ export class PdfDocumentBuilder {
     this.pageHeight = this.doc.internal.pageSize.getHeight();
 
     const margins =
-      orientation === 'landscape' ? PDF_THEME.margins.landscape : PDF_THEME.margins.portrait;
+      orientation === 'landscape' ? this.theme.margins.landscape : this.theme.margins.portrait;
     this.marginLeft = margins.left;
     this.marginRight = margins.right;
     this.marginTop = margins.top;
     this.marginBottom = margins.bottom;
     this.currentY = this.marginTop;
+  }
+
+  public getStyleProfile(): PdfStyleProfile {
+    return this.styleProfile;
+  }
+
+  public getTheme(): typeof PDF_THEME | typeof PDF_FORMAL_NEUTRAL_THEME {
+    return this.theme;
   }
 
   public getContentWidth(): number {
@@ -116,24 +140,24 @@ export class PdfDocumentBuilder {
     const centerX = this.pageWidth / 2;
 
     // Document Title
-    this.doc.setFont(PDF_THEME.fonts.bold, 'bold');
-    this.doc.setFontSize(PDF_THEME.sizes.docTitle);
-    this.doc.setTextColor(PDF_THEME.colors.primary[0], PDF_THEME.colors.primary[1], PDF_THEME.colors.primary[2]);
+    this.doc.setFont(this.theme.fonts.bold, 'bold');
+    this.doc.setFontSize(this.theme.sizes.docTitle);
+    this.doc.setTextColor(this.theme.colors.primary[0], this.theme.colors.primary[1], this.theme.colors.primary[2]);
     this.doc.text(title.toUpperCase(), centerX, this.currentY, { align: 'center' });
-    this.currentY += 5.5;
+    this.currentY += this.styleProfile === 'FORMAL_NEUTRAL' ? 6 : 5.5;
 
     // Subtitle
     if (subTitle) {
-      this.doc.setFont(PDF_THEME.fonts.bold, 'bold');
-      this.doc.setFontSize(PDF_THEME.sizes.docSubTitle);
-      this.doc.setTextColor(PDF_THEME.colors.secondary[0], PDF_THEME.colors.secondary[1], PDF_THEME.colors.secondary[2]);
+      this.doc.setFont(this.theme.fonts.bold, 'bold');
+      this.doc.setFontSize(this.theme.sizes.docSubTitle);
+      this.doc.setTextColor(this.theme.colors.secondary[0], this.theme.colors.secondary[1], this.theme.colors.secondary[2]);
       this.doc.text(subTitle.toUpperCase(), centerX, this.currentY, { align: 'center' });
-      this.currentY += 5.5;
+      this.currentY += this.styleProfile === 'FORMAL_NEUTRAL' ? 6 : 5.5;
     }
 
-    // Decorative divider line
-    this.doc.setDrawColor(PDF_THEME.colors.primary[0], PDF_THEME.colors.primary[1], PDF_THEME.colors.primary[2]);
-    this.doc.setLineWidth(0.6);
+    // Divider line
+    this.doc.setDrawColor(this.theme.colors.primary[0], this.theme.colors.primary[1], this.theme.colors.primary[2]);
+    this.doc.setLineWidth(this.styleProfile === 'FORMAL_NEUTRAL' ? 0.4 : 0.6);
     this.doc.line(this.marginLeft, this.currentY, this.pageWidth - this.marginRight, this.currentY);
     this.currentY += 5;
   }
@@ -206,15 +230,16 @@ export class PdfDocumentBuilder {
       body: rows,
       theme: 'plain',
       styles: {
-        fontSize: PDF_THEME.sizes.body,
+        font: this.theme.fonts.base,
+        fontSize: this.theme.sizes.body,
         cellPadding: { top: 0.8, bottom: 0.8, left: 1, right: 1 },
-        textColor: [30, 41, 59],
+        textColor: this.theme.colors.text as [number, number, number],
         overflow: 'linebreak',
       },
       columnStyles: {
-        0: { fontStyle: 'bold', cellWidth: 36 },
+        0: { font: this.theme.fonts.bold, fontStyle: 'bold', cellWidth: 36 },
         1: { cellWidth: this.orientation === 'landscape' ? 95 : 55 },
-        2: { fontStyle: 'bold', cellWidth: 34 },
+        2: { font: this.theme.fonts.bold, fontStyle: 'bold', cellWidth: 34 },
         3: { cellWidth: 'auto' },
       },
     };
@@ -223,8 +248,8 @@ export class PdfDocumentBuilder {
     const finalY = (this.doc as any).lastAutoTable?.finalY;
     this.currentY = (finalY || this.currentY) + 5;
 
-    // Subtle line below identity
-    this.doc.setDrawColor(PDF_THEME.colors.border[0], PDF_THEME.colors.border[1], PDF_THEME.colors.border[2]);
+    // Line below identity
+    this.doc.setDrawColor(this.theme.colors.border[0], this.theme.colors.border[1], this.theme.colors.border[2]);
     this.doc.setLineWidth(0.3);
     this.doc.line(this.marginLeft, this.currentY - 2, this.pageWidth - this.marginRight, this.currentY - 2);
     this.currentY += 2;
@@ -314,15 +339,16 @@ export class PdfDocumentBuilder {
       body: rows,
       theme: 'plain',
       styles: {
-        fontSize: PDF_THEME.sizes.body,
+        font: this.theme.fonts.base,
+        fontSize: this.theme.sizes.body,
         cellPadding: { top: 0.8, bottom: 0.8, left: 1, right: 1 },
-        textColor: [30, 41, 59],
+        textColor: this.theme.colors.text as [number, number, number],
         overflow: 'linebreak',
       },
       columnStyles: {
-        0: { fontStyle: 'bold', cellWidth: 36 },
+        0: { font: this.theme.fonts.bold, fontStyle: 'bold', cellWidth: 36 },
         1: { cellWidth: this.orientation === 'landscape' ? 95 : 55 },
-        2: { fontStyle: 'bold', cellWidth: 34 },
+        2: { font: this.theme.fonts.bold, fontStyle: 'bold', cellWidth: 34 },
         3: { cellWidth: 'auto' },
       },
     };
@@ -331,8 +357,8 @@ export class PdfDocumentBuilder {
     const finalY = (this.doc as any).lastAutoTable?.finalY;
     this.currentY = (finalY || this.currentY) + 5;
 
-    // Subtle line below identity
-    this.doc.setDrawColor(PDF_THEME.colors.border[0], PDF_THEME.colors.border[1], PDF_THEME.colors.border[2]);
+    // Line below identity
+    this.doc.setDrawColor(this.theme.colors.border[0], this.theme.colors.border[1], this.theme.colors.border[2]);
     this.doc.setLineWidth(0.3);
     this.doc.line(this.marginLeft, this.currentY - 2, this.pageWidth - this.marginRight, this.currentY - 2);
     this.currentY += 2;
@@ -354,9 +380,9 @@ export class PdfDocumentBuilder {
     const rightColX = this.pageWidth - this.marginRight - 70;
     let sigY = this.currentY + 6;
 
-    this.doc.setFont(PDF_THEME.fonts.base, 'normal');
-    this.doc.setFontSize(PDF_THEME.sizes.body);
-    this.doc.setTextColor(PDF_THEME.colors.text[0], PDF_THEME.colors.text[1], PDF_THEME.colors.text[2]);
+    this.doc.setFont(this.theme.fonts.base, 'normal');
+    this.doc.setFontSize(this.theme.sizes.body);
+    this.doc.setTextColor(this.theme.colors.text[0], this.theme.colors.text[1], this.theme.colors.text[2]);
 
     if (signoff.isBlankMode) {
       // Right Column: Date placeholder
@@ -370,14 +396,14 @@ export class PdfDocumentBuilder {
       this.doc.text(signoff.principalTitle || 'Kepala Sekolah', leftColX, sigY);
       sigY += 22;
 
-      this.doc.setFont(PDF_THEME.fonts.bold, 'bold');
+      this.doc.setFont(this.theme.fonts.bold, 'bold');
       this.doc.text('(................................................)', leftColX, sigY);
       this.doc.text('(................................................)', rightColX, sigY);
       sigY += 4.5;
 
-      this.doc.setFont(PDF_THEME.fonts.base, 'normal');
-      this.doc.setFontSize(PDF_THEME.sizes.small);
-      this.doc.setTextColor(PDF_THEME.colors.textLight[0], PDF_THEME.colors.textLight[1], PDF_THEME.colors.textLight[2]);
+      this.doc.setFont(this.theme.fonts.base, 'normal');
+      this.doc.setFontSize(this.theme.sizes.small);
+      this.doc.setTextColor(this.theme.colors.textLight[0], this.theme.colors.textLight[1], this.theme.colors.textLight[2]);
       this.doc.text('NIP. ....................', leftColX, sigY);
       this.doc.text('NIP. ....................', rightColX, sigY);
     } else {
@@ -394,15 +420,15 @@ export class PdfDocumentBuilder {
       sigY += 22; // Space for physical signature
 
       // Names (Underlined / Bold)
-      this.doc.setFont(PDF_THEME.fonts.bold, 'bold');
+      this.doc.setFont(this.theme.fonts.bold, 'bold');
       this.doc.text(signoff.principalName || '(........................)', leftColX, sigY);
       this.doc.text(signoff.teacherName || '(........................)', rightColX, sigY);
       sigY += 4.5;
 
       // NIPs
-      this.doc.setFont(PDF_THEME.fonts.base, 'normal');
-      this.doc.setFontSize(PDF_THEME.sizes.small);
-      this.doc.setTextColor(PDF_THEME.colors.textLight[0], PDF_THEME.colors.textLight[1], PDF_THEME.colors.textLight[2]);
+      this.doc.setFont(this.theme.fonts.base, 'normal');
+      this.doc.setFontSize(this.theme.sizes.small);
+      this.doc.setTextColor(this.theme.colors.textLight[0], this.theme.colors.textLight[1], this.theme.colors.textLight[2]);
       this.doc.text(signoff.principalNip ? `NIP. ${signoff.principalNip}` : 'NIP. ....................', leftColX, sigY);
       this.doc.text(signoff.teacherNip ? `NIP. ${signoff.teacherNip}` : 'NIP. ....................', rightColX, sigY);
     }
@@ -413,39 +439,47 @@ export class PdfDocumentBuilder {
   public renderHeading(text: string, level: 1 | 2 | 3 = 1): void {
     this.checkPageBreak(12);
 
-    this.doc.setFont(PDF_THEME.fonts.bold, 'bold');
+    this.doc.setFont(this.theme.fonts.bold, 'bold');
     if (level === 1) {
-      this.doc.setFontSize(PDF_THEME.sizes.heading1);
-      this.doc.setTextColor(PDF_THEME.colors.primary[0], PDF_THEME.colors.primary[1], PDF_THEME.colors.primary[2]);
+      this.doc.setFontSize(this.theme.sizes.heading1);
+      this.doc.setTextColor(this.theme.colors.primary[0], this.theme.colors.primary[1], this.theme.colors.primary[2]);
     } else if (level === 2) {
-      this.doc.setFontSize(PDF_THEME.sizes.heading2);
-      this.doc.setTextColor(PDF_THEME.colors.primaryDark[0], PDF_THEME.colors.primaryDark[1], PDF_THEME.colors.primaryDark[2]);
+      this.doc.setFontSize(this.theme.sizes.heading2);
+      this.doc.setTextColor(this.theme.colors.primaryDark[0], this.theme.colors.primaryDark[1], this.theme.colors.primaryDark[2]);
     } else {
-      this.doc.setFontSize(PDF_THEME.sizes.body);
-      this.doc.setTextColor(PDF_THEME.colors.secondary[0], PDF_THEME.colors.secondary[1], PDF_THEME.colors.secondary[2]);
+      this.doc.setFontSize(this.theme.sizes.body);
+      this.doc.setTextColor(this.theme.colors.secondary[0], this.theme.colors.secondary[1], this.theme.colors.secondary[2]);
     }
 
     this.doc.text(text, this.marginLeft, this.currentY);
-    this.currentY += level === 1 ? 5 : 4;
+    this.currentY += level === 1 ? 5.5 : 4.5;
   }
 
-  public renderParagraph(text: string, options: { bold?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; spacingAfter?: number } = {}): void {
+  public renderParagraph(
+    text: string,
+    options: {
+      bold?: boolean;
+      align?: 'left' | 'center' | 'right' | 'justify';
+      spacingAfter?: number;
+    } = {}
+  ): void {
     const { bold = false, align = 'left', spacingAfter = 3.5 } = options;
     this.checkPageBreak(10);
 
-    this.doc.setFont(bold ? PDF_THEME.fonts.bold : PDF_THEME.fonts.base, bold ? 'bold' : 'normal');
-    this.doc.setFontSize(PDF_THEME.sizes.body);
-    this.doc.setTextColor(PDF_THEME.colors.text[0], PDF_THEME.colors.text[1], PDF_THEME.colors.text[2]);
+    this.doc.setFont(bold ? this.theme.fonts.bold : this.theme.fonts.base, bold ? 'bold' : 'normal');
+    this.doc.setFontSize(this.theme.sizes.body);
+    this.doc.setTextColor(this.theme.colors.text[0], this.theme.colors.text[1], this.theme.colors.text[2]);
 
     const contentWidth = this.getContentWidth();
     const splitLines = this.doc.splitTextToSize(text, contentWidth);
+    const lineSpacing = this.styleProfile === 'FORMAL_NEUTRAL' ? 5.2 : 4.5;
 
     for (const line of splitLines) {
-      this.checkPageBreak(5);
+      this.checkPageBreak(lineSpacing + 1);
       this.doc.text(line, this.marginLeft, this.currentY, {
         align: align === 'justify' ? 'left' : align,
       });
-      this.currentY += 4.5;
+      this.currentY += lineSpacing;
     }
 
     this.currentY += spacingAfter;
@@ -456,28 +490,28 @@ export class PdfDocumentBuilder {
 
     const contentWidth = this.getContentWidth();
     const splitLines = this.doc.splitTextToSize(text, contentWidth - 8);
-    const boxHeight = (splitLines.length * 4.5) + (title ? 9 : 6);
+    const boxHeight = splitLines.length * 4.5 + (title ? 9 : 6);
 
     this.checkPageBreak(boxHeight + 4);
 
     // Callout box background
-    this.doc.setFillColor(PDF_THEME.colors.calloutBg[0], PDF_THEME.colors.calloutBg[1], PDF_THEME.colors.calloutBg[2]);
-    this.doc.setDrawColor(PDF_THEME.colors.primary[0], PDF_THEME.colors.primary[1], PDF_THEME.colors.primary[2]);
+    this.doc.setFillColor(this.theme.colors.calloutBg[0], this.theme.colors.calloutBg[1], this.theme.colors.calloutBg[2]);
+    this.doc.setDrawColor(this.theme.colors.primary[0], this.theme.colors.primary[1], this.theme.colors.primary[2]);
     this.doc.setLineWidth(0.4);
     this.doc.roundedRect(this.marginLeft, this.currentY, contentWidth, boxHeight, 1.5, 1.5, 'FD');
 
     let innerY = this.currentY + 4;
     if (title) {
-      this.doc.setFont(PDF_THEME.fonts.bold, 'bold');
-      this.doc.setFontSize(PDF_THEME.sizes.body);
-      this.doc.setTextColor(PDF_THEME.colors.primary[0], PDF_THEME.colors.primary[1], PDF_THEME.colors.primary[2]);
+      this.doc.setFont(this.theme.fonts.bold, 'bold');
+      this.doc.setFontSize(this.theme.sizes.body);
+      this.doc.setTextColor(this.theme.colors.primary[0], this.theme.colors.primary[1], this.theme.colors.primary[2]);
       this.doc.text(title, this.marginLeft + 4, innerY);
       innerY += 4.5;
     }
 
-    this.doc.setFont(PDF_THEME.fonts.base, 'normal');
-    this.doc.setFontSize(PDF_THEME.sizes.small);
-    this.doc.setTextColor(PDF_THEME.colors.text[0], PDF_THEME.colors.text[1], PDF_THEME.colors.text[2]);
+    this.doc.setFont(this.theme.fonts.base, 'normal');
+    this.doc.setFontSize(this.theme.sizes.small);
+    this.doc.setTextColor(this.theme.colors.text[0], this.theme.colors.text[1], this.theme.colors.text[2]);
 
     for (const line of splitLines) {
       this.doc.text(line, this.marginLeft + 4, innerY);
@@ -517,26 +551,28 @@ export class PdfDocumentBuilder {
       body: section.rows as any[][],
       theme: 'grid',
       headStyles: {
-        fillColor: PDF_THEME.colors.tableHeaderBg as [number, number, number],
-        textColor: [255, 255, 255],
+        fillColor: this.theme.colors.tableHeaderBg as [number, number, number],
+        textColor: (this.styleProfile === 'FORMAL_NEUTRAL' ? [0, 0, 0] : [255, 255, 255]) as [number, number, number],
+        font: this.theme.fonts.bold,
         fontStyle: 'bold',
-        fontSize: PDF_THEME.sizes.tableHeader,
+        fontSize: this.theme.sizes.tableHeader,
         halign: 'center',
         valign: 'middle',
         lineWidth: 0.2,
-        lineColor: [203, 213, 225],
+        lineColor: this.theme.colors.border as [number, number, number],
       },
       styles: {
-        fontSize: PDF_THEME.sizes.tableBody,
-        textColor: [30, 41, 59],
+        font: this.theme.fonts.base,
+        fontSize: this.theme.sizes.tableBody,
+        textColor: this.theme.colors.text as [number, number, number],
         cellPadding: { top: 2, bottom: 2, left: 2.5, right: 2.5 },
         lineWidth: 0.15,
-        lineColor: [203, 213, 225],
+        lineColor: this.theme.colors.border as [number, number, number],
         valign: 'top',
         overflow: 'linebreak',
       },
       alternateRowStyles: {
-        fillColor: PDF_THEME.colors.tableAltRowBg as [number, number, number],
+        fillColor: this.theme.colors.tableAltRowBg as [number, number, number],
       },
       columnStyles: columnStylesMap,
       showHead: 'everyPage',
@@ -564,15 +600,11 @@ export class PdfDocumentBuilder {
 
     let sigY = this.currentY + 2;
 
-    this.doc.setFont(PDF_THEME.fonts.base, 'normal');
-    this.doc.setFontSize(PDF_THEME.sizes.body);
-    this.doc.setTextColor(PDF_THEME.colors.text[0], PDF_THEME.colors.text[1], PDF_THEME.colors.text[2]);
+    this.doc.setFont(this.theme.fonts.base, 'normal');
+    this.doc.setFontSize(this.theme.sizes.body);
+    this.doc.setTextColor(this.theme.colors.text[0], this.theme.colors.text[1], this.theme.colors.text[2]);
 
     if (isBlankMode) {
-      this.doc.setFont(PDF_THEME.fonts.base, 'normal');
-      this.doc.setFontSize(PDF_THEME.sizes.body);
-      this.doc.setTextColor(PDF_THEME.colors.text[0], PDF_THEME.colors.text[1], PDF_THEME.colors.text[2]);
-
       this.doc.text('Mengetahui,', leftColX, sigY);
       sigY += 4.5;
 
@@ -584,8 +616,8 @@ export class PdfDocumentBuilder {
       this.doc.text('(........................)', rightColX, sigY);
       sigY += 4.5;
 
-      this.doc.setFontSize(PDF_THEME.sizes.small);
-      this.doc.setTextColor(PDF_THEME.colors.textLight[0], PDF_THEME.colors.textLight[1], PDF_THEME.colors.textLight[2]);
+      this.doc.setFontSize(this.theme.sizes.small);
+      this.doc.setTextColor(this.theme.colors.textLight[0], this.theme.colors.textLight[1], this.theme.colors.textLight[2]);
       this.doc.text('NIP. ....................', leftColX, sigY);
       this.doc.text('NIP. ....................', rightColX, sigY);
     } else {
@@ -602,15 +634,15 @@ export class PdfDocumentBuilder {
       sigY += 22; // Space for physical signature
 
       // Names (Underlined / Bold)
-      this.doc.setFont(PDF_THEME.fonts.bold, 'bold');
+      this.doc.setFont(this.theme.fonts.bold, 'bold');
       this.doc.text(school.principalName || '(........................)', leftColX, sigY);
       this.doc.text(profile.name || '(........................)', rightColX, sigY);
       sigY += 4.5;
 
       // NIPs
-      this.doc.setFont(PDF_THEME.fonts.base, 'normal');
-      this.doc.setFontSize(PDF_THEME.sizes.small);
-      this.doc.setTextColor(PDF_THEME.colors.textLight[0], PDF_THEME.colors.textLight[1], PDF_THEME.colors.textLight[2]);
+      this.doc.setFont(this.theme.fonts.base, 'normal');
+      this.doc.setFontSize(this.theme.sizes.small);
+      this.doc.setTextColor(this.theme.colors.textLight[0], this.theme.colors.textLight[1], this.theme.colors.textLight[2]);
       this.doc.text(school.principalNip ? `NIP. ${school.principalNip}` : 'NIP. ....................', leftColX, sigY);
       this.doc.text(profile.nip ? `NIP. ${profile.nip}` : 'NIP. ....................', rightColX, sigY);
     }
@@ -623,12 +655,12 @@ export class PdfDocumentBuilder {
 
     for (let i = 1; i <= totalPages; i++) {
       this.doc.setPage(i);
-      this.doc.setFont(PDF_THEME.fonts.base, 'normal');
-      this.doc.setFontSize(PDF_THEME.sizes.pageNumber);
-      this.doc.setTextColor(PDF_THEME.colors.textLight[0], PDF_THEME.colors.textLight[1], PDF_THEME.colors.textLight[2]);
+      this.doc.setFont(this.theme.fonts.base, 'normal');
+      this.doc.setFontSize(this.theme.sizes.pageNumber);
+      this.doc.setTextColor(this.theme.colors.textLight[0], this.theme.colors.textLight[1], this.theme.colors.textLight[2]);
 
       // Footer divider
-      this.doc.setDrawColor(PDF_THEME.colors.border[0], PDF_THEME.colors.border[1], PDF_THEME.colors.border[2]);
+      this.doc.setDrawColor(this.theme.colors.border[0], this.theme.colors.border[1], this.theme.colors.border[2]);
       this.doc.setLineWidth(0.2);
       this.doc.line(this.marginLeft, this.pageHeight - 12, this.pageWidth - this.marginRight, this.pageHeight - 12);
 
@@ -671,7 +703,7 @@ export class PdfDocumentBuilder {
  * High-level helper to generate and download a standard formal PDF document.
  */
 export function buildPdfFromOptions(options: PdfDocumentOptions): PdfDocumentBuilder {
-  const builder = new PdfDocumentBuilder(options.orientation || 'portrait');
+  const builder = new PdfDocumentBuilder(options.orientation || 'portrait', options.styleProfile || 'DEFAULT');
 
   // 1. Header
   builder.renderHeader(options.title, options.subTitle);
