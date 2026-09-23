@@ -355,7 +355,14 @@ export async function generatePROMES(context: DocumentGenerationContext): Promis
   );
 
   // 4. Signoff Block
-  docChildren.push(...createSignoffBlock(school, profile));
+  docChildren.push(
+    ...createSignoffBlock(
+      school,
+      profile,
+      context.documentMode === 'blank',
+      context.workspace?.documentDate || context.snapshot?.documentDate
+    )
+  );
 
   const doc = new Document({
     sections: [

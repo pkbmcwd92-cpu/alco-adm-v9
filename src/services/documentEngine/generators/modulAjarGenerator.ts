@@ -65,9 +65,10 @@ function createModulAjarIdentityTable(rows: [string, string][]): Table {
 function createModulAjarSignoffBlock(
   school: SchoolData,
   profile: TeacherProfile,
-  isBlankMode: boolean = false
+  isBlankMode: boolean = false,
+  customDate?: string
 ): (Paragraph | Table)[] {
-  const dateStr = formatOfficialDate(school);
+  const dateStr = formatOfficialDate(school, customDate);
   const principalTitle = 'Kepala Sekolah';
   const teacherTitle = 'Guru Mata Pelajaran';
 
@@ -546,7 +547,14 @@ export async function generateModulAjar(context: DocumentGenerationContext): Pro
   }
 
   // Signoff Block in Times New Roman
-  docChildren.push(...createModulAjarSignoffBlock(school, profile, isBlankMode));
+  docChildren.push(
+    ...createModulAjarSignoffBlock(
+      school,
+      profile,
+      isBlankMode,
+      context.workspace?.documentDate || context.snapshot?.documentDate
+    )
+  );
 
   const doc = new Document({
     sections: [

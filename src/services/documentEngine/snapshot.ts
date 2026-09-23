@@ -1,6 +1,7 @@
 import { DocumentSnapshot, DocumentMode, CurriculumType } from '../../types';
 import { DocumentGenerationContext } from './types';
 import { getCurriculumType } from '../curriculumRules';
+import { resolveDocumentDate, formatDocumentDate } from '../documentDateService';
 
 /**
  * Creates an immutable DocumentSnapshot capturing the exact identity and academic context
@@ -11,8 +12,10 @@ export function createDocumentSnapshot(
   format: 'docx' | 'pdf' | 'all' = 'docx',
   modeOverride?: DocumentMode
 ): DocumentSnapshot {
-  const { school, profile, academicSetting, cp, tp, atp, students } = context;
+  const { school, profile, academicSetting, workspace, cp, tp, atp, students } = context;
   const docMode = modeOverride || context.documentMode || 'data';
+  const rawDate = resolveDocumentDate(workspace?.documentDate);
+  const formattedDate = formatDocumentDate(rawDate);
 
   return {
     schoolName: (school?.name || '').trim(),
@@ -40,6 +43,8 @@ export function createDocumentSnapshot(
     studentCount: students?.length || 0,
     generatedAt: new Date().toISOString(),
     format,
+    documentDate: rawDate,
+    formattedDocumentDate: formattedDate,
     sourceVersions: {
       cpUpdatedAt: cp?.updatedAt,
       tpUpdatedAt: tp?.updatedAt,
@@ -94,6 +99,12 @@ export function resolveEffectiveContext(
       curriculum: snap.curriculum || context.academicSetting?.curriculum || '',
       curriculumType: snap.curriculumType || getCurriculumType(snap.curriculum || context.academicSetting?.curriculum),
     },
+    workspace: context.workspace
+      ? {
+          ...context.workspace,
+          documentDate: snap.documentDate || context.workspace.documentDate,
+        }
+      : undefined,
     documentMode: snap.documentMode || context.documentMode || 'data',
     snapshot: snap,
   };
@@ -230,6 +241,13 @@ export function compareDocumentSnapshots(
       valueA: snapA.subject || '-',
       valueB: snapB.subject || '-',
       isMatch: (snapA.subject || '').trim() === (snapB.subject || '').trim(),
+    },
+    {
+      key: 'documentDate',
+      label: 'Tanggal Dokumen',
+      valueA: snapA.formattedDocumentDate || snapA.documentDate || '-',
+      valueB: snapB.formattedDocumentDate || snapB.documentDate || '-',
+      isMatch: (snapA.documentDate || '').trim() === (snapB.documentDate || '').trim(),
     },
     {
       key: 'generatedAt',

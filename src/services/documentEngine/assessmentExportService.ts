@@ -258,7 +258,7 @@ export function createAssessmentDocumentSnapshot(
     school.district?.replace(/^Kec\.\s*/i, '') || school.regency || school.village || '';
 
   if (isBlankMode) {
-    const rawDate = options?.documentDate || context.documentDate;
+    const rawDate = options?.documentDate || context.documentDate || context.workspace?.documentDate || context.snapshot?.documentDate;
     const dateResult = rawDate ? formatDocumentDate(rawDate, location) : { rawDate: '', formattedDate: '' };
 
     const snapshot: AssessmentDocumentSnapshot = {
@@ -311,7 +311,7 @@ export function createAssessmentDocumentSnapshot(
   }
   const pkg = eligibility.package;
 
-  const rawDate = options?.documentDate || context.documentDate;
+  const rawDate = options?.documentDate || context.documentDate || context.workspace?.documentDate || context.snapshot?.documentDate;
   if (!rawDate) {
     throw new Error(
       'Gagal membuat snapshot asesmen: Tanggal dokumen (documentDate) wajib ditentukan untuk ekspor dokumen resmi.'

@@ -36,13 +36,14 @@ import {
   getCurriculumTypeFromSetting,
 } from '../services/curriculumRouter';
 import { validateAcademicSettingReadiness } from '../services/academicSettingReadiness';
+import { isValidDocumentDate } from '../services/documentDateService';
 import { TeacherTeachingLoadModal } from './TeacherTeachingLoadModal';
 
 interface AcademicSettingsProps {
   setting?: AcademicSetting | null;
   profile?: TeacherProfile | null;
   workspace?: AdministrationWorkspace | null;
-  onSaveSetting: (setting: AcademicSetting, customWorkspaceName?: string) => boolean;
+  onSaveSetting: (setting: AcademicSetting, customWorkspaceName?: string, documentDate?: string) => boolean;
   onNextStep: (savedSetting?: AcademicSetting) => void;
 }
 
@@ -50,7 +51,7 @@ interface AcademicSettingsFormProps {
   setting: AcademicSetting;
   profile?: TeacherProfile | null;
   workspace?: AdministrationWorkspace | null;
-  onSaveSetting: (setting: AcademicSetting, customWorkspaceName?: string) => boolean;
+  onSaveSetting: (setting: AcademicSetting, customWorkspaceName?: string, documentDate?: string) => boolean;
   onNextStep: (savedSetting?: AcademicSetting) => void;
 }
 
@@ -71,6 +72,7 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
     totalHoursPerWeek: setting.totalHoursPerWeek ?? null,
   });
   const [workspaceName, setWorkspaceName] = useState<string>(workspace?.name || '');
+  const [documentDate, setDocumentDate] = useState<string>(workspace?.documentDate || '');
   const [isCustomSubject, setIsCustomSubject] = useState(false);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -96,6 +98,7 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
       totalHoursPerWeek: setting.totalHoursPerWeek ?? null,
     });
     setWorkspaceName(workspace?.name || '');
+    setDocumentDate(workspace?.documentDate || '');
     const currentSubjectList = SUBJECT_OPTIONS[setting.level] || [];
     if (setting.subject && !currentSubjectList.includes(setting.subject)) {
       setIsCustomSubject(true);
@@ -104,7 +107,7 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
     }
   }, [setting, workspace]);
 
-  // Dirty State Calculation: Check if form data or workspace name differs from saved setting
+  // Dirty State Calculation: Check if form data or workspace name or documentDate differs from saved setting
   const isDirty = useMemo(() => {
     const derivedPhase = getPhaseFromGrade(formData.level, formData.grade);
     const isSettingChanged =
@@ -118,9 +121,10 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
       (formData.phase || '') !== (derivedPhase || '');
 
     const isNameChanged = workspace ? workspaceName.trim() !== (workspace.name || '').trim() : false;
+    const isDateChanged = workspace ? (documentDate || '') !== (workspace.documentDate || '') : false;
 
-    return isSettingChanged || isNameChanged;
-  }, [formData, setting, workspace, workspaceName]);
+    return isSettingChanged || isNameChanged || isDateChanged;
+  }, [formData, setting, workspace, workspaceName, documentDate]);
 
   // Handle Level Change (clean reset without fabricated guessing)
   const handleLevelChange = (level: string) => {
@@ -188,11 +192,17 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
       totalHoursPerWeek: setting.totalHoursPerWeek ?? null,
     });
     setWorkspaceName(workspace?.name || '');
+    setDocumentDate(workspace?.documentDate || '');
     setErrorMessage(null);
   };
 
   const handleSave = (e?: React.FormEvent): AcademicSetting | null => {
     if (e) e.preventDefault();
+
+    if (!documentDate || !isValidDocumentDate(documentDate)) {
+      setErrorMessage('Tanggal Dokumen wajib ditetapkan.');
+      return null;
+    }
 
     const readiness = validateAcademicSettingReadiness(formData);
     if (!readiness.valid) {
@@ -213,7 +223,7 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
       updatedAt: new Date().toISOString(),
     };
 
-    const saved = onSaveSetting(updated, workspaceName.trim() || undefined);
+    const saved = onSaveSetting(updated, workspaceName.trim() || undefined, documentDate);
     if (!saved) {
       setErrorMessage('Gagal menyimpan pengaturan: Workspace tidak valid atau terjadi kesalahan.');
       return null;
@@ -330,24 +340,45 @@ const AcademicSettingsForm: React.FC<AcademicSettingsFormProps> = ({
       {/* Main Settings Form */}
       <form onSubmit={handleSaveAndContinue} className="space-y-6">
         <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs space-y-6">
-          {/* Row 0: Workspace Name (Optional Customization) */}
+          {/* Row 0: Workspace Name & Tanggal Dokumen */}
           {workspace && (
-            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5 flex items-center gap-1.5">
-                <Edit3 className="w-3.5 h-3.5 text-blue-600" />
-                <span>Nama Administrasi / Workspace</span>
-              </label>
-              <input
-                id="input-workspace-name"
-                type="text"
-                value={workspaceName}
-                onChange={(e) => setWorkspaceName(e.target.value)}
-                placeholder="Contoh: PJOK — Kelas 1 — Sem 1 — 2026/2027"
-                className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-600 bg-white"
-              />
-              <p className="text-[11px] text-slate-500 mt-1">
-                Nama ini memudahkan Anda membedakan antar administrasi (misal jika Anda mengajar banyak kelas atau mapel).
-              </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5 flex items-center gap-1.5">
+                  <Edit3 className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Nama Administrasi / Workspace</span>
+                </label>
+                <input
+                  id="input-workspace-name"
+                  type="text"
+                  value={workspaceName}
+                  onChange={(e) => setWorkspaceName(e.target.value)}
+                  placeholder="Contoh: PJOK — Kelas 1 — Sem 1 — 2026/2027"
+                  className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-600 bg-white"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Nama ini memudahkan Anda membedakan antar administrasi (misal jika Anda mengajar banyak kelas atau mapel).
+                </p>
+              </div>
+
+              <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-200">
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Tanggal Dokumen <span className="text-rose-500">*</span></span>
+                </label>
+                <input
+                  id="input-workspace-document-date"
+                  type="date"
+                  value={documentDate}
+                  onChange={(e) => setDocumentDate(e.target.value)}
+                  className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-600 bg-white cursor-pointer"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {!documentDate
+                    ? 'Belum ditetapkan. Pilih tanggal resmi yang akan digunakan seluruh dokumen administrasi.'
+                    : 'Digunakan sebagai tanggal resmi pada dokumen Word/PDF. Mengubah tanggal ini tidak mengubah isi perangkat pembelajaran.'}
+                </p>
+              </div>
             </div>
           )}
 

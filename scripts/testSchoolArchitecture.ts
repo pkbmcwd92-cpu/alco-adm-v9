@@ -59,7 +59,25 @@ async function runAcceptanceTests() {
   // Reset storage to clean state
   localStorage.clear();
   let initialStorage = loadAppStorage();
-  const initialSchool = initialStorage.schools[0];
+  let initialSchool = initialStorage.schools[0];
+
+  if (!initialSchool) {
+    createSchool({
+      id: 'sch-default-1',
+      name: 'SD Negeri 01 Pagi',
+      npsn: '12345678',
+      address: 'Jl. Merdeka No. 1',
+      village: 'Kebon Sirih',
+      district: 'Menteng',
+      regency: 'Jakarta Pusat',
+      province: 'DKI Jakarta',
+      principalName: 'Kepala Sekolah Utama',
+      principalNip: '197001011995011001',
+    } as any);
+    initialStorage = loadAppStorage();
+    initialSchool = initialStorage.schools[0];
+  }
+
   let initialProfile = initialStorage.profiles[0];
 
   if (!initialProfile && initialSchool) {

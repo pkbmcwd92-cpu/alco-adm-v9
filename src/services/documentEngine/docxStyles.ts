@@ -11,6 +11,7 @@ import {
   ShadingType,
 } from 'docx';
 import { SchoolData, TeacherProfile, AcademicSetting } from '../../types';
+import { formatDocumentDate, resolveDocumentDate } from '../documentDateService';
 
 export type AlignmentTypeValue = (typeof AlignmentType)[keyof typeof AlignmentType];
 
@@ -29,13 +30,11 @@ export const INDONESIAN_MONTHS = [
   'Desember',
 ];
 
-export function formatOfficialDate(school: SchoolData): string {
-  const today = new Date();
+export function formatOfficialDate(school: SchoolData, customDate?: string): string {
   const location = school.district?.replace(/^Kec\.\s*/i, '') || school.regency || school.village || 'Tempat';
-  const day = today.getDate();
-  const month = INDONESIAN_MONTHS[today.getMonth()];
-  const year = today.getFullYear();
-  return `${location}, ${day} ${month} ${year}`;
+  const effectiveDate = resolveDocumentDate(customDate);
+  const formatted = formatDocumentDate(effectiveDate);
+  return `${location}, ${formatted}`;
 }
 
 /**
@@ -206,7 +205,16 @@ export function createSignoffBlock(
   isBlankMode: boolean = false,
   customDateString?: string
 ): (Paragraph | Table)[] {
-  const dateStr = customDateString || formatOfficialDate(school);
+  let dateStr: string;
+  if (customDateString) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(customDateString.trim())) {
+      dateStr = formatOfficialDate(school, customDateString.trim());
+    } else {
+      dateStr = customDateString;
+    }
+  } else {
+    dateStr = formatOfficialDate(school);
+  }
 
   const principalTitle = 'Kepala Sekolah';
   const teacherTitle = 'Guru Mata Pelajaran';

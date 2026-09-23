@@ -51,6 +51,10 @@ import {
   duplicateWorkspace,
   deleteWorkspace,
 } from './services/storage';
+import {
+  getLocalTodayDocumentDate,
+  isValidDocumentDate,
+} from './services/documentDateService';
 import { Header } from './components/Header';
 import { WorkflowStepper } from './components/WorkflowStepper';
 import { ProfileManager } from './components/ProfileManager';
@@ -95,6 +99,7 @@ export function App() {
   const [newWsSubject, setNewWsSubject] = useState('');
   const [newWsSemester, setNewWsSemester] = useState<'1 (Ganjil)' | '2 (Genap)' | ''>('');
   const [newWsYear, setNewWsYear] = useState('');
+  const [newWsDocumentDate, setNewWsDocumentDate] = useState<string>('');
 
   // Reload data from storage
   const refreshData = useCallback(() => {
@@ -160,6 +165,7 @@ export function App() {
     setNewWsGrade('');
     setNewWsSemester(activeAcademicSetting?.semester || '');
     setNewWsYear(activeAcademicSetting?.academicYear || '');
+    setNewWsDocumentDate(getLocalTodayDocumentDate());
     setIsNewWorkspaceModalOpen(true);
   };
 
@@ -229,10 +235,18 @@ export function App() {
       });
       return;
     }
+    if (!newWsDocumentDate || !isValidDocumentDate(newWsDocumentDate)) {
+      setAppNotice({
+        type: 'warning',
+        message: 'Tanggal Dokumen wajib diisi dengan tanggal yang valid (format YYYY-MM-DD).',
+      });
+      return;
+    }
 
     createWorkspace({
       profileId: activeProfile?.id || '',
       schoolId: activeSchool?.id || '',
+      documentDate: newWsDocumentDate,
       setting: {
         level: activeProfile?.defaultLevel || '',
         grade: newWsGrade,
@@ -248,8 +262,12 @@ export function App() {
   };
 
   // Handlers for Academic Setting & Documents
-  const handleSaveAcademicSetting = (setting: AcademicSetting, customWorkspaceName?: string): boolean => {
-    const saved = saveAcademicSetting(setting, customWorkspaceName);
+  const handleSaveAcademicSetting = (
+    setting: AcademicSetting,
+    customWorkspaceName?: string,
+    documentDate?: string
+  ): boolean => {
+    const saved = saveAcademicSetting(setting, customWorkspaceName, documentDate);
     if (saved) {
       refreshData();
     }
@@ -744,6 +762,22 @@ export function App() {
                   onChange={(e) => setNewWsYear(e.target.value)}
                   className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 bg-white cursor-pointer"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Tanggal Dokumen <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={newWsDocumentDate}
+                  onChange={(e) => setNewWsDocumentDate(e.target.value)}
+                  className="w-full text-sm px-3 py-2 rounded-xl border border-slate-300 bg-white cursor-pointer"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Tanggal ini akan digunakan sebagai tanggal resmi seluruh dokumen dalam Administrasi ini dan dapat diubah kembali pada Pengaturan Administrasi.
+                </p>
               </div>
 
               <div className="bg-blue-50/70 p-3 rounded-xl border border-blue-200/60 text-xs text-blue-900 space-y-1">

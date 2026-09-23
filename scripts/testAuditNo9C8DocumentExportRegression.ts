@@ -88,6 +88,8 @@ const mockAcademicSetting: AcademicSetting = {
 const mockTP: TPData = {
   id: 'tp-data-1',
   academicSettingId: 'setting-1',
+  workflowStatus: 'SIAP',
+  needsReview: false,
   items: [
     {
       id: 'tp-1',
@@ -1100,6 +1102,8 @@ async function runAudit9C8Regression() {
     const tpWithoutCode: TPData = {
       id: 'tp-no-code',
       academicSettingId: 'setting-1',
+      workflowStatus: 'SIAP',
+      needsReview: false,
       items: [
         {
           id: 'tp-no-code-1',

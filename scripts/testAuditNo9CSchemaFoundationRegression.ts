@@ -34,6 +34,8 @@ async function runRegressionTests() {
   const mockTP: TPData = {
     id: 'tp-data-1',
     academicSettingId: 'setting-merdeka',
+    workflowStatus: 'SIAP',
+    needsReview: false,
     items: [
       {
         id: 'tp-1',

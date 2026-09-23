@@ -32,6 +32,7 @@ import {
   AssessmentPackage,
 } from '../types';
 import { getCurriculumTypeFromSetting } from './curriculumRouter';
+import { isValidDocumentDate } from './documentDateService';
 import {
   validateATPReferences,
   normalizeATPReferences,
@@ -225,6 +226,8 @@ export function loadAppStorage(): AppStorageState {
         );
         if (legacyAssign) {
           p.schoolId = legacyAssign.schoolId;
+        } else if (parsed.schools.length > 0) {
+          p.schoolId = parsed.schools[0].id;
         } else if (p.schoolId) {
           delete p.schoolId;
         }
@@ -718,6 +721,7 @@ export function createWorkspace(params: {
   profileId: string;
   schoolId?: string;
   name?: string;
+  documentDate?: string;
   setting: {
     curriculum?: string;
     academicYear?: string;
@@ -729,6 +733,12 @@ export function createWorkspace(params: {
   };
 }): AdministrationWorkspace {
   const state = loadAppStorage();
+
+  if (params.documentDate !== undefined && params.documentDate !== '') {
+    if (!isValidDocumentDate(params.documentDate)) {
+      throw new Error(`Tanggal dokumen tidak valid: "${params.documentDate}". Format yang benar adalah YYYY-MM-DD.`);
+    }
+  }
   
   let profile = state.profiles.find((p) => p.id === params.profileId);
   if (!profile) {
@@ -794,6 +804,7 @@ export function createWorkspace(params: {
     schoolId,
     academicSettingId: newSettingId,
     name: wsName,
+    documentDate: params.documentDate && isValidDocumentDate(params.documentDate) ? params.documentDate : undefined,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -884,6 +895,7 @@ export function duplicateWorkspace(sourceWorkspaceId: string, newGrade?: string,
     schoolId: sourceWs.schoolId,
     academicSettingId: newSettingId,
     name: clonedName,
+    documentDate: isValidDocumentDate(sourceWs.documentDate) ? sourceWs.documentDate : undefined,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -1431,7 +1443,18 @@ export function saveCPAnalysis(analysis: CPAnalysisData): void {
   saveAppStorage(current);
 }
 
-export function saveAcademicSetting(setting: AcademicSetting, customWorkspaceName?: string): boolean {
+export function saveAcademicSetting(
+  setting: AcademicSetting,
+  customWorkspaceName?: string,
+  documentDate?: string
+): boolean {
+  if (documentDate !== undefined && documentDate !== '') {
+    if (!isValidDocumentDate(documentDate)) {
+      console.warn(`[storage] Invalid documentDate "${documentDate}" rejected.`);
+      return false;
+    }
+  }
+
   const current = loadAppStorage();
   const derived = (setting.level && setting.grade) ? getPhaseFromGrade(setting.level, setting.grade) : '';
   const curType = getCurriculumTypeFromSetting(setting);
@@ -1497,11 +1520,14 @@ export function saveAcademicSetting(setting: AcademicSetting, customWorkspaceNam
     }
   }
 
-  // Sync workspace name
+  // Sync workspace name and documentDate
   if (ws) {
     ws.name = customWorkspaceName && customWorkspaceName.trim().length > 0
       ? customWorkspaceName.trim()
       : generateWorkspaceName(normalized);
+    if (documentDate !== undefined) {
+      ws.documentDate = documentDate ? documentDate : undefined;
+    }
     ws.updatedAt = new Date().toISOString();
   }
 
