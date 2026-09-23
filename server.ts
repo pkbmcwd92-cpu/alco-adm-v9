@@ -572,6 +572,23 @@ function validateAILearningPlanPayload(data: any): { isValid: boolean; reason?: 
     return { isValid: false, reason: 'Payload AI bukan berupa objek valid' };
   }
 
+  // Print-readiness mandatory pedagogical fields for Kurikulum Merdeka
+  if (typeof data.initialCompetency !== 'string' || data.initialCompetency.trim() === '') {
+    return { isValid: false, reason: 'Kompetensi Awal (initialCompetency) kosong atau tidak valid' };
+  }
+
+  if (!Array.isArray(data.graduateProfileDimensions) || data.graduateProfileDimensions.filter((d: any) => typeof d === 'string' && d.trim().length > 0).length === 0) {
+    return { isValid: false, reason: 'Dimensi Profil Lulusan (graduateProfileDimensions) kosong atau tidak valid' };
+  }
+
+  if (!Array.isArray(data.resources) || data.resources.filter((r: any) => r && typeof r === 'object' && ((typeof r.title === 'string' && r.title.trim().length > 0) || (typeof r.source === 'string' && r.source.trim().length > 0))).length === 0) {
+    return { isValid: false, reason: 'Sarana dan prasarana / sumber belajar (resources) kosong atau tidak valid' };
+  }
+
+  if (typeof data.learningModel !== 'string' || data.learningModel.trim() === '') {
+    return { isValid: false, reason: 'Model/praktik pembelajaran (learningModel) kosong atau tidak valid' };
+  }
+
   if (!Array.isArray(data.learningExperiences) || data.learningExperiences.length === 0) {
     return { isValid: false, reason: 'Daftar Pengalaman Belajar (learningExperiences) kosong atau bukan array' };
   }
@@ -622,14 +639,8 @@ function validateAILearningPlanPayload(data: any): { isValid: boolean; reason?: 
   if (data.triggerQuestions !== undefined && !Array.isArray(data.triggerQuestions)) {
     return { isValid: false, reason: 'Pertanyaan pemantik (triggerQuestions) harus berupa array' };
   }
-  if (data.resources !== undefined && !Array.isArray(data.resources)) {
-    return { isValid: false, reason: 'Sumber belajar (resources) harus berupa array' };
-  }
-  if (data.graduateProfileDimensions !== undefined && !Array.isArray(data.graduateProfileDimensions)) {
-    return { isValid: false, reason: 'Dimensi Profil Lulusan harus berupa array' };
-  }
 
-  // Ensure default empty arrays if undefined
+  // Normalize arrays
   data.triggerQuestions = Array.isArray(data.triggerQuestions) ? data.triggerQuestions : [];
   data.resources = Array.isArray(data.resources) ? data.resources : [];
   data.graduateProfileDimensions = Array.isArray(data.graduateProfileDimensions) ? data.graduateProfileDimensions : [];
@@ -689,14 +700,20 @@ ${tps.map((t: any, i: number) => `${i + 1}. [Kode: ${t.code || '-'}] ${t.stateme
 ATP / ALOKASI JP RUJUKAN:
 ${atpContextStr}
 
-INSTRUKSI:
-1. Susun Pengalaman Belajar (learningExperiences) dengan struktur 3 fase utama (UNDERSTAND, APPLY, REFLECT) sesuai panduan 2026. Nilai properti "phase" HARUS salah satu dari: "UNDERSTAND", "APPLY", atau "REFLECT".
-2. Setiap Pengalaman Belajar memuat "description" yang jelas dan operasional, serta "durationMinutes" (dalam menit, opsional).
-3. Gunakan terminologi "Murid" (bukan peserta didik) dan "Dimensi Profil Lulusan".
-4. Sediakan Rencana Asesmen (Asesmen Diagnostik Awal, Formatif, dan Sumatif).
-5. Sediakan Rencana Diferensiasi (Konten, Proses, Produk).
-6. Buat kalimat pemahaman bermakna dan pertanyaan pemantik yang relevan.
-7. JANGAN mengarang atau memalsukan Alokasi JP jika belum ditentukan.
+INSTRUKSI INFORMASI UMUM & PEDAGOGIS:
+1. "initialCompetency" (Kompetensi Awal): Tuliskan kalimat prasyarat kompetensi awal yang diharapkan (misal: "Murid diharapkan telah mengenal..." atau "Prasyarat pembelajaran meliputi..."). Jangan mengklaim penguasaan murid tanpa asesmen nyata.
+2. "graduateProfileDimensions": Pilih 2–4 dimensi profil lulusan yang paling relevan dari 8 dimensi kanonikal: "Keimanan dan Ketakwaan terhadap Tuhan Yang Maha Esa", "Kewargaan", "Penalaran Kritis", "Kreativitas", "Kolaborasi", "Kemandirian", "Kesehatan", "Komunikasi".
+3. "resources": Susun daftar sarana, prasarana, atau sumber belajar yang diperlukan atau direncanakan sesuai mata pelajaran dan aktivitas nyata.
+4. "learningModel": Tentukan model atau praktik pembelajaran kontekstual yang operasional (misal: "Pembelajaran kontekstual melalui demonstrasi, praktik terbimbing, kolaborasi, dan refleksi").
+
+INSTRUKSI KEGIATAN & ASESMEN:
+5. Susun Pengalaman Belajar (learningExperiences) dengan struktur 3 fase utama (UNDERSTAND, APPLY, REFLECT) sesuai panduan 2026. Nilai properti "phase" HARUS salah satu dari: "UNDERSTAND", "APPLY", atau "REFLECT".
+6. Setiap Pengalaman Belajar memuat "description" yang jelas dan operasional, serta "durationMinutes" (dalam menit, opsional).
+7. Gunakan terminologi "Murid" (bukan peserta didik) dan "Dimensi Profil Lulusan".
+8. Sediakan Rencana Asesmen (Asesmen Diagnostik Awal, Formatif, dan Sumatif).
+9. Sediakan Rencana Diferensiasi (Konten, Proses, Produk).
+10. Buat kalimat pemahaman bermakna dan pertanyaan pemantik yang relevan.
+11. JANGAN mengarang atau memalsukan Alokasi JP jika belum ditentukan.
 
 Kembalikan output JSON sesuai schema.`;
 
@@ -706,10 +723,34 @@ Kembalikan output JSON sesuai schema.`;
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
-          required: ['learningExperiences'],
+          required: [
+            'learningExperiences',
+            'initialCompetency',
+            'graduateProfileDimensions',
+            'resources',
+            'learningModel',
+          ],
           properties: {
             title: { type: Type.STRING },
             topic: { type: Type.STRING },
+            initialCompetency: { type: Type.STRING, description: 'Kompetensi awal atau prasyarat pembelajaran' },
+            graduateProfileDimensions: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: '2-4 Dimensi Profil Lulusan kanonikal yang relevan',
+            },
+            learningModel: { type: Type.STRING, description: 'Model atau praktik pembelajaran kontekstual' },
+            resources: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                },
+                required: ['title'],
+              },
+              description: 'Daftar sarana dan prasarana / sumber belajar',
+            },
             meaningfulUnderstanding: { type: Type.STRING },
             triggerQuestions: { type: Type.ARRAY, items: { type: Type.STRING } },
             learningExperiences: {
@@ -731,7 +772,6 @@ Kembalikan output JSON sesuai schema.`;
                 graduateProfileDimensions: { type: Type.ARRAY, items: { type: Type.STRING } },
               },
             },
-            graduateProfileDimensions: { type: Type.ARRAY, items: { type: Type.STRING } },
             learningSteps: {
               type: Type.OBJECT,
               properties: {
@@ -825,15 +865,6 @@ Kembalikan output JSON sesuai schema.`;
             },
             enrichmentPlan: { type: Type.STRING },
             remedialPlan: { type: Type.STRING },
-            resources: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  title: { type: Type.STRING },
-                },
-              },
-            },
           },
         },
       },

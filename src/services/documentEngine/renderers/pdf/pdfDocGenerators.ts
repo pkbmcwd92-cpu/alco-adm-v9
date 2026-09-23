@@ -388,13 +388,33 @@ export async function generatePdfDocument(
         }
       }
 
-      const p3Str = matchedPlan?.p3Dimensions && matchedPlan.p3Dimensions.length > 0
-        ? matchedPlan.p3Dimensions.join(', ')
-        : '-';
+      const dimensionsList =
+        matchedPlan?.graduateProfileDimensions && matchedPlan.graduateProfileDimensions.length > 0
+          ? matchedPlan.graduateProfileDimensions
+          : matchedPlan?.p3Dimensions && matchedPlan.p3Dimensions.length > 0
+          ? matchedPlan.p3Dimensions
+          : [];
+      const dimensionsStr = dimensionsList.length > 0 ? dimensionsList.join(', ') : '-';
 
       const resourcesStr = matchedPlan?.resources && matchedPlan.resources.length > 0
-        ? matchedPlan.resources.map((r, i) => `${i + 1}. ${r.title}`).join('\n')
+        ? matchedPlan.resources.map((r, i) => `${i + 1}. ${r.title}${r.source ? ` (${r.source})` : ''}`).join('\n')
         : '-';
+
+      const infoUmumLines: string[] = [];
+      if (isBlankMode) {
+        infoUmumLines.push('Kompetensi Awal: ........................................................');
+        infoUmumLines.push('Dimensi Profil Lulusan: ........................................................');
+        infoUmumLines.push('Sarana & Prasarana: ........................................................');
+        infoUmumLines.push('Model Pembelajaran: ........................................................');
+      } else {
+        infoUmumLines.push(`Kompetensi Awal: ${matchedPlan?.initialCompetency || '-'}`);
+        infoUmumLines.push(`Dimensi Profil Lulusan: ${dimensionsStr}`);
+        infoUmumLines.push(`Sarana & Prasarana: ${resourcesStr}`);
+        if (matchedPlan?.targetStudents && matchedPlan.targetStudents.trim().length > 0) {
+          infoUmumLines.push(`Karakteristik/Kebutuhan Belajar Murid: ${matchedPlan.targetStudents.trim()}`);
+        }
+        infoUmumLines.push(`Model/Praktik Pembelajaran: ${matchedPlan?.learningModel || '-'}`);
+      }
 
       sections.push({
         type: 'heading',
@@ -403,9 +423,7 @@ export async function generatePdfDocument(
       });
       sections.push({
         type: 'paragraph',
-        text: isBlankMode
-          ? 'Kompetensi Awal: ........................................................\nProfil Pancasila: ........................................................\nTarget Siswa: ........................................................\nJumlah Siswa: ..........\nModel Pembelajaran: ........................................................\nSarana & Prasarana: ........................................................'
-          : `Status Rencana: ${matchedPlan ? `${matchedPlan.status} (${matchedPlan.sourceType})` : 'DRAFT'}\nKompetensi Awal: ${matchedPlan?.initialCompetency || '-'}\nDimensi Profil Lulusan: ${p3Str}\nTarget Murid: ${matchedPlan?.targetStudents || '-'}\nJumlah Murid: ${students?.length !== undefined ? `${students.length} Siswa` : '-'}\nModel Pembelajaran: ${matchedPlan?.learningModel || '-'}\nSarana & Prasarana: ${resourcesStr}`,
+        text: infoUmumLines.join('\n'),
       });
 
       sections.push({
@@ -420,27 +438,50 @@ export async function generatePdfDocument(
           : `Tujuan Pembelajaran:\n${tpStatements}\n\nPemahaman Bermakna:\n${matchedPlan?.meaningfulUnderstanding || '-'}\n\nPertanyaan Pemantik:\n${matchedPlan?.triggerQuestions && matchedPlan.triggerQuestions.length > 0 ? matchedPlan.triggerQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n') : '-'}`,
       });
 
-      sections.push({
-        type: 'heading',
-        text: 'III. KEGIATAN PEMBELAJARAN',
-        level: 1,
-      });
+      const experiences = matchedPlan?.learningExperiences || [];
+      const hasExperiences = experiences.length > 0;
+      const isMerdekaCurriculum = !academicSetting?.curriculumType || academicSetting.curriculumType === 'KURIKULUM_MERDEKA';
 
-      const openingStr = (matchedPlan?.learningSteps?.opening || []).map((s) => `• ${s.description}${s.durationMinutes ? ` (${s.durationMinutes} Menit)` : ''}`).join('\n') || '-';
-      const coreStr = (matchedPlan?.learningSteps?.core || []).map((s) => `• ${s.description}${s.durationMinutes ? ` (${s.durationMinutes} Menit)` : ''}`).join('\n') || '-';
-      const closingStr = (matchedPlan?.learningSteps?.closing || []).map((s) => `• ${s.description}${s.durationMinutes ? ` (${s.durationMinutes} Menit)` : ''}`).join('\n') || '-';
+      if (hasExperiences || (isBlankMode && isMerdekaCurriculum)) {
+        sections.push({
+          type: 'heading',
+          text: 'III. PENGALAMAN BELAJAR',
+          level: 1,
+        });
 
-      sections.push({
-        type: 'paragraph',
-        text: isBlankMode
-          ? '1. Kegiatan Pendahuluan: ........................................................................................................................................................\n2. Kegiatan Inti: ........................................................................................................................................................\n3. Kegiatan Penutup: ........................................................................................................................................................'
-          : `1. Kegiatan Pendahuluan:\n${openingStr}\n\n2. Kegiatan Inti:\n${coreStr}\n\n3. Kegiatan Penutup:\n${closingStr}`,
-      });
+        const understandStr = experiences.filter((e) => e.phase === 'UNDERSTAND').map((s) => `• ${s.description}${s.durationMinutes ? ` (${s.durationMinutes} Menit)` : ''}`).join('\n') || '-';
+        const applyStr = experiences.filter((e) => e.phase === 'APPLY').map((s) => `• ${s.description}${s.durationMinutes ? ` (${s.durationMinutes} Menit)` : ''}`).join('\n') || '-';
+        const reflectStr = experiences.filter((e) => e.phase === 'REFLECT').map((s) => `• ${s.description}${s.durationMinutes ? ` (${s.durationMinutes} Menit)` : ''}`).join('\n') || '-';
+
+        sections.push({
+          type: 'paragraph',
+          text: isBlankMode
+            ? '1. Memahami (Understand): ........................................................................................................................................................\n2. Mengaplikasi (Apply): ........................................................................................................................................................\n3. Merefleksi (Reflect): ........................................................................................................................................................'
+            : `1. Memahami (Understand):\n${understandStr}\n\n2. Mengaplikasi (Apply):\n${applyStr}\n\n3. Merefleksi (Reflect):\n${reflectStr}`,
+        });
+      } else {
+        sections.push({
+          type: 'heading',
+          text: 'III. KEGIATAN PEMBELAJARAN',
+          level: 1,
+        });
+
+        const openingStr = (matchedPlan?.learningSteps?.opening || []).map((s) => `• ${s.description}${s.durationMinutes ? ` (${s.durationMinutes} Menit)` : ''}`).join('\n') || '-';
+        const coreStr = (matchedPlan?.learningSteps?.core || []).map((s) => `• ${s.description}${s.durationMinutes ? ` (${s.durationMinutes} Menit)` : ''}`).join('\n') || '-';
+        const closingStr = (matchedPlan?.learningSteps?.closing || []).map((s) => `• ${s.description}${s.durationMinutes ? ` (${s.durationMinutes} Menit)` : ''}`).join('\n') || '-';
+
+        sections.push({
+          type: 'paragraph',
+          text: isBlankMode
+            ? '1. Kegiatan Pendahuluan: ........................................................................................................................................................\n2. Kegiatan Inti: ........................................................................................................................................................\n3. Kegiatan Penutup: ........................................................................................................................................................'
+            : `1. Kegiatan Pendahuluan:\n${openingStr}\n\n2. Kegiatan Inti:\n${coreStr}\n\n3. Kegiatan Penutup:\n${closingStr}`,
+        });
+      }
 
       if (matchedPlan?.assessmentPlan || isBlankMode) {
         sections.push({
           type: 'heading',
-          text: 'IV. RENCANA ASESMEN',
+          text: 'IV. ASESMEN PEMBELAJARAN',
           level: 1,
         });
         const initialAsm = (matchedPlan?.assessmentPlan?.initial || []).map((a) => `• ${a.description || a.technique || 'Asesmen Awal'}`).join('\n') || '-';
@@ -450,8 +491,8 @@ export async function generatePdfDocument(
         sections.push({
           type: 'paragraph',
           text: isBlankMode
-            ? 'Asesmen Awal: ........................................................\nAsesmen Formatif: ........................................................\nAsesmen Sumatif: ........................................................'
-            : `Asesmen Awal:\n${initialAsm}\n\nAsesmen Formatif:\n${formativeAsm}\n\nAsesmen Sumatif:\n${summativeAsm}`,
+            ? '1. Asesmen Awal (Diagnostik): ........................................................\n2. Asesmen Formatif: ........................................................\n3. Asesmen Sumatif: ........................................................'
+            : `1. Asesmen Awal (Diagnostik):\n${initialAsm}\n\n2. Asesmen Formatif:\n${formativeAsm}\n\n3. Asesmen Sumatif:\n${summativeAsm}`,
         });
       }
       break;

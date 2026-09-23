@@ -665,6 +665,33 @@ export function validateLearningPlan(
     if (plan.sourceType === 'AI_DRAFT' && !plan.confirmedAt) {
       finalizationErrors.push('Keluaran draf AI tidak boleh langsung berstatus SIAP tanpa peninjauan guru.');
     }
+
+    // Print-readiness finalization requirements for Kurikulum Merdeka
+    if (plan.curriculumType === 'KURIKULUM_MERDEKA' || !plan.curriculumType) {
+      if (!plan.initialCompetency || typeof plan.initialCompetency !== 'string' || plan.initialCompetency.trim() === '') {
+        finalizationErrors.push('Kompetensi Awal belum diisi.');
+      }
+      const validDimensions = [
+        ...(Array.isArray(plan.graduateProfileDimensions) ? plan.graduateProfileDimensions : []),
+        ...(Array.isArray(plan.p3Dimensions) ? plan.p3Dimensions : []),
+      ].filter((d) => typeof d === 'string' && d.trim().length > 0);
+      if (validDimensions.length === 0) {
+        finalizationErrors.push('Dimensi Profil Lulusan belum dipilih.');
+      }
+      const validResources = (plan.resources || []).filter(
+        (r) =>
+          r &&
+          typeof r === 'object' &&
+          ((typeof r.title === 'string' && r.title.trim().length > 0) ||
+            (typeof r.source === 'string' && r.source.trim().length > 0))
+      );
+      if (validResources.length === 0) {
+        finalizationErrors.push('Sarana dan prasarana / sumber belajar belum diisi.');
+      }
+      if (!plan.learningModel || typeof plan.learningModel !== 'string' || plan.learningModel.trim() === '') {
+        finalizationErrors.push('Model/praktik pembelajaran belum diisi.');
+      }
+    }
   }
 
   const allErrors = [...draftErrors, ...finalizationErrors];

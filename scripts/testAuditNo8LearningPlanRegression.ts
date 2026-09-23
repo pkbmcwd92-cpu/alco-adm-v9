@@ -111,6 +111,16 @@ async function runRegressionSuite() {
         jp: 12,
         semester: 1,
       },
+      {
+        id: 'atp-202',
+        stepNumber: 2,
+        tpId: 'tp-102',
+        tpCode: 'TP 7.2',
+        tpStatement: 'Menerapkan struktur kontrol keputusan dalam program.',
+        materialScope: 'Pemrograman Python',
+        jp: 24,
+        semester: 1,
+      },
     ],
   };
 
@@ -214,6 +224,9 @@ async function runRegressionSuite() {
     topic: 'Pengenalan Algoritma',
     allocatedJP: 6,
     initialCompetency: 'Siswa dapat mengoperasikan komputer',
+    graduateProfileDimensions: ['Penalaran Kritis'],
+    resources: [{ id: 'r1', title: 'Buku Siswa Informatika' }],
+    learningModel: 'Pembelajaran Kontekstual',
     p3Dimensions: ['Bernalar Kritis'],
     learningSteps: {
       opening: [{ id: 's1', description: 'Apersepsi' }],

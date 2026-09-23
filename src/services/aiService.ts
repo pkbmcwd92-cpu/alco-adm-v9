@@ -4,6 +4,7 @@ import {
   normalizeAIAssessmentPlan,
   normalizeAIReflection,
   normalizeDeepLearningContext,
+  normalizeAIResources,
 } from './learningPlanService';
 
 export interface CPAnalysisResult {
@@ -156,6 +157,29 @@ export async function generateLearningPlanWithAI(params: GenerateLearningPlanPar
     }
 
     // Runtime validation and normalization for critical structure
+    if (typeof data.data.initialCompetency !== 'string' || data.data.initialCompetency.trim() === '') {
+      throw new Error('Hasil respon AI Modul Ajar tidak memuat Kompetensi Awal (initialCompetency) yang valid.');
+    }
+    data.data.initialCompetency = data.data.initialCompetency.trim();
+
+    const rawDimensions = Array.isArray(data.data.graduateProfileDimensions) ? data.data.graduateProfileDimensions : [];
+    const validDimensions = rawDimensions.filter((d: any) => typeof d === 'string' && d.trim().length > 0).map((d: any) => d.trim());
+    if (validDimensions.length === 0) {
+      throw new Error('Hasil respon AI Modul Ajar tidak memuat Dimensi Profil Lulusan yang valid.');
+    }
+    data.data.graduateProfileDimensions = validDimensions;
+
+    const normalizedResources = normalizeAIResources(data.data.resources);
+    if (normalizedResources.length === 0) {
+      throw new Error('Hasil respon AI Modul Ajar tidak memuat Sarana dan Prasarana / Sumber Belajar (resources) yang valid.');
+    }
+    data.data.resources = normalizedResources;
+
+    if (typeof data.data.learningModel !== 'string' || data.data.learningModel.trim() === '') {
+      throw new Error('Hasil respon AI Modul Ajar tidak memuat Model/Praktik Pembelajaran (learningModel) yang valid.');
+    }
+    data.data.learningModel = data.data.learningModel.trim();
+
     if (!Array.isArray(data.data.learningExperiences) || data.data.learningExperiences.length === 0) {
       throw new Error('Hasil respon AI Modul Ajar tidak memuat Pengalaman Belajar (learningExperiences).');
     }

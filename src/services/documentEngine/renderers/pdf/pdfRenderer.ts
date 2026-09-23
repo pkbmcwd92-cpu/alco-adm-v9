@@ -632,14 +632,7 @@ export class PdfDocumentBuilder {
       this.doc.setLineWidth(0.2);
       this.doc.line(this.marginLeft, this.pageHeight - 12, this.pageWidth - this.marginRight, this.pageHeight - 12);
 
-      // Left footer: System tag
-      this.doc.text(
-        'Administrasi Guru AI — Standar Kurikulum Merdeka (PPA Kemendikdasmen)',
-        this.marginLeft,
-        this.pageHeight - 8
-      );
-
-      // Right footer: Page X of Y
+      // Right footer: Page X of Y (neutral official pagination)
       this.doc.text(
         `Halaman ${i} dari ${totalPages}`,
         this.pageWidth - this.marginRight,
