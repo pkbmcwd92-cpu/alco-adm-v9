@@ -58,9 +58,25 @@ async function runAcceptanceTests() {
 
   // Reset storage to clean state
   localStorage.clear();
-  const initialStorage = loadAppStorage();
+  let initialStorage = loadAppStorage();
   const initialSchool = initialStorage.schools[0];
-  const initialProfile = initialStorage.profiles[0];
+  let initialProfile = initialStorage.profiles[0];
+
+  if (!initialProfile && initialSchool) {
+    initialProfile = {
+      id: 'prof-default-1',
+      name: 'Guru Utama',
+      nip: '198001012005011001',
+      status: 'PNS',
+      defaultSubject: 'Bahasa Indonesia',
+      defaultLevel: 'SD',
+      schoolId: initialSchool.id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    saveProfile(initialProfile);
+    initialStorage = loadAppStorage();
+  }
 
   assert(Boolean(initialSchool), 'Setup: Initial school exists');
   assert(Boolean(initialProfile), 'Setup: Initial profile exists');
