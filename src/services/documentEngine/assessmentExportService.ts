@@ -272,16 +272,15 @@ export function checkAssessmentExportEligibility(
 }
 
 /**
- * Creates an immutable AssessmentDocumentSnapshot.
- * This snapshot is completely self-contained. Renderers MUST consume this snapshot
- * rather than live application state.
+ * Internal shared helper to create a canonical AssessmentDocumentSnapshot from an AssessmentPackage.
+ * Responsible for document date, metadata resolution, objectives, and deep-copying package content.
+ * Does NOT enforce SIAP eligibility or review status.
  */
-export function createAssessmentDocumentSnapshot(
+function createCanonicalAssessmentSnapshotFromPackage(
   context: DocumentGenerationContext,
+  pkg: AssessmentPackage,
   options?: AssessmentExportOptions
 ): AssessmentDocumentSnapshot {
-  const isBlankMode = (options?.documentMode || context.documentMode) === 'blank';
-
   const school = context.school || ({} as SchoolData);
   const profile = context.profile || ({} as TeacherProfile);
   const academicSetting = context.academicSetting || ({} as AcademicSetting);
@@ -289,65 +288,11 @@ export function createAssessmentDocumentSnapshot(
   const location =
     school.district?.replace(/^Kec\.\s*/i, '') || school.regency || school.village || '';
 
-  if (isBlankMode) {
-    const rawDate = resolveAssessmentDocumentDate(context, options);
-    const dateResult = rawDate ? formatDocumentDate(rawDate, location) : { rawDate: '', formattedDate: '' };
-
-    const snapshot: AssessmentDocumentSnapshot = {
-      snapshotId: `snap-asmt-blank-${Date.now()}`,
-      mode: 'BLANK_TEMPLATE',
-      documentType: 'ASESMEN',
-      documentDate: dateResult.rawDate || undefined,
-      formattedDocumentDate: dateResult.formattedDate || '',
-      schoolName: school.name || '',
-      npsn: school.npsn,
-      schoolNpsn: school.npsn,
-      schoolAddress: school.address,
-      schoolVillage: school.village,
-      schoolDistrict: school.district,
-      schoolRegency: school.regency,
-      schoolProvince: school.province,
-      principalName: school.principalName || '',
-      principalNip: school.principalNip,
-      principalSource: school.principalSource,
-      teacherName: profile.name || '',
-      teacherNip: profile.nip,
-      teacherStatus: profile.status,
-      academicYear: academicSetting.academicYear || '',
-      semester: academicSetting.semester || '',
-      grade: academicSetting.grade || '',
-      subject: academicSetting.subject || '',
-      phase: academicSetting.phase,
-      curriculum: academicSetting.curriculum || '',
-      curriculumType: academicSetting.curriculumType,
-      documentMode: 'blank',
-      studentCount: context.students?.length,
-      studentNames: context.students?.map((s) => s.name),
-      generatedAt: new Date().toISOString(),
-      blueprintItems: [],
-      instruments: [],
-      answerKeys: [],
-      scoringGuides: [],
-      rubrics: [],
-      resolvedObjectives: {},
-    };
-
-    return snapshot;
-  }
-
-  const eligibility = checkAssessmentExportEligibility(context);
-  if (!eligibility.eligible || !eligibility.package) {
-    throw new Error(
-      `Gagal membuat snapshot asesmen: ${eligibility.blockers.join('; ')}`
-    );
-  }
-  const pkg = eligibility.package;
-
   const rawDate = resolveAssessmentDocumentDate(context, options);
 
   if (!isValidDocumentDate(rawDate)) {
     throw new Error(
-      'Gagal membuat snapshot asesmen: Tanggal Dokumen (documentDate) belum ditetapkan. Atur Tanggal Dokumen pada Pengaturan Administrasi sebelum mengekspor dokumen resmi.'
+      'Gagal membuat snapshot asesmen: Tanggal Dokumen (documentDate) belum ditetapkan. Atur Tanggal Dokumen pada Pengaturan Administrasi sebelum mengekspor atau melihat pratinjau dokumen.'
     );
   }
   const dateResult = formatDocumentDate(rawDate, location);
@@ -424,6 +369,132 @@ export function createAssessmentDocumentSnapshot(
   };
 
   return snapshot;
+}
+
+/**
+ * Creates an immutable AssessmentDocumentSnapshot.
+ * This snapshot is completely self-contained. Renderers MUST consume this snapshot
+ * rather than live application state.
+ */
+export function createAssessmentDocumentSnapshot(
+  context: DocumentGenerationContext,
+  options?: AssessmentExportOptions
+): AssessmentDocumentSnapshot {
+  const isBlankMode = (options?.documentMode || context.documentMode) === 'blank';
+
+  const school = context.school || ({} as SchoolData);
+  const profile = context.profile || ({} as TeacherProfile);
+  const academicSetting = context.academicSetting || ({} as AcademicSetting);
+
+  const location =
+    school.district?.replace(/^Kec\.\s*/i, '') || school.regency || school.village || '';
+
+  if (isBlankMode) {
+    const rawDate = resolveAssessmentDocumentDate(context, options);
+    const dateResult = rawDate ? formatDocumentDate(rawDate, location) : { rawDate: '', formattedDate: '' };
+
+    const snapshot: AssessmentDocumentSnapshot = {
+      snapshotId: `snap-asmt-blank-${Date.now()}`,
+      mode: 'BLANK_TEMPLATE',
+      documentType: 'ASESMEN',
+      documentDate: dateResult.rawDate || undefined,
+      formattedDocumentDate: dateResult.formattedDate || '',
+      schoolName: school.name || '',
+      npsn: school.npsn,
+      schoolNpsn: school.npsn,
+      schoolAddress: school.address,
+      schoolVillage: school.village,
+      schoolDistrict: school.district,
+      schoolRegency: school.regency,
+      schoolProvince: school.province,
+      principalName: school.principalName || '',
+      principalNip: school.principalNip,
+      principalSource: school.principalSource,
+      teacherName: profile.name || '',
+      teacherNip: profile.nip,
+      teacherStatus: profile.status,
+      academicYear: academicSetting.academicYear || '',
+      semester: academicSetting.semester || '',
+      grade: academicSetting.grade || '',
+      subject: academicSetting.subject || '',
+      phase: academicSetting.phase,
+      curriculum: academicSetting.curriculum || '',
+      curriculumType: academicSetting.curriculumType,
+      documentMode: 'blank',
+      studentCount: context.students?.length,
+      studentNames: context.students?.map((s) => s.name),
+      generatedAt: new Date().toISOString(),
+      blueprintItems: [],
+      instruments: [],
+      answerKeys: [],
+      scoringGuides: [],
+      rubrics: [],
+      resolvedObjectives: {},
+    };
+
+    return snapshot;
+  }
+
+  const eligibility = checkAssessmentExportEligibility(context);
+  if (!eligibility.eligible || !eligibility.package) {
+    throw new Error(
+      `Gagal membuat snapshot asesmen: ${eligibility.blockers.join('; ')}`
+    );
+  }
+
+  return createCanonicalAssessmentSnapshotFromPackage(
+    context,
+    eligibility.package,
+    options
+  );
+}
+
+/**
+ * Creates an immutable AssessmentDocumentSnapshot for preview purposes.
+ * Does NOT require SIAP status or checkAssessmentExportEligibility, allowing DRAFT / PERLU_DILENGKAPI packages to be previewed.
+ * Exact activeAssessmentPackageId is STRICTLY mandatory (Fail-Closed).
+ */
+export function createAssessmentPreviewSnapshot(
+  context: DocumentGenerationContext,
+  options?: AssessmentExportOptions
+): AssessmentDocumentSnapshot {
+  if (!context.activeAssessmentPackageId) {
+    throw new Error('Pratinjau asesmen memerlukan ID paket aktif yang spesifik.');
+  }
+
+  const pkg = (context.assessmentPackages || []).find(
+    (p) => p.id === context.activeAssessmentPackageId
+  );
+
+  if (!pkg) {
+    throw new Error(
+      `Pratinjau asesmen gagal: Perangkat Asesmen dengan ID "${context.activeAssessmentPackageId}" tidak ditemukan.`
+    );
+  }
+
+  return createCanonicalAssessmentSnapshotFromPackage(
+    context,
+    pkg,
+    options
+  );
+}
+
+/**
+ * Creates a NormalizedAssessmentDocument model for preview purposes.
+ * Consumes the preview snapshot and runs it through the standard normalization engine.
+ */
+export function createAssessmentPreviewModel(
+  context: DocumentGenerationContext,
+  options?: AssessmentExportOptions
+): NormalizedAssessmentDocument {
+  const snapshot = createAssessmentPreviewSnapshot(
+    context,
+    options
+  );
+
+  return buildNormalizedAssessmentDocumentModel(
+    snapshot
+  );
 }
 
 /**

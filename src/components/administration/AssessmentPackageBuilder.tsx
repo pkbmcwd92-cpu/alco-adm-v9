@@ -66,9 +66,10 @@ import { generateAssessmentPackageDraft } from '../../services/assessmentPackage
 import { assessmentRegenerationService } from '../../services/assessmentRegenerationService';
 import { assessmentRegenerationEligibilityService } from '../../services/assessmentRegenerationEligibilityService';
 import { validateGeneratedAssessment } from '../../services/assessmentValidationService';
-import { exportAssessmentDocx, exportAssessmentPdf } from '../../services/documentEngine/assessmentExportService';
+import { exportAssessmentDocx, exportAssessmentPdf, createAssessmentPreviewModel } from '../../services/documentEngine/assessmentExportService';
+import { AssessmentDocumentPreview } from './AssessmentDocumentPreview';
 import { DocumentGenerationContext } from '../../services/documentEngine/types';
-import { RefreshCw, AlertOctagon, Info, Printer } from 'lucide-react';
+import { RefreshCw, AlertOctagon, Info, Printer, Eye } from 'lucide-react';
 
 interface AssessmentPackageBuilderProps {
   school: SchoolData;
@@ -107,7 +108,7 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
     latestPackagesRef.current = assessmentPackages;
   }, [assessmentPackages]);
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'blueprint' | 'instruments' | 'keys_rubrics' | 'validation'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'blueprint' | 'instruments' | 'keys_rubrics' | 'preview' | 'validation'>('overview');
   const [activeInstType, setActiveInstType] = useState<AssessmentInstrumentType | ''>('');
 
   // 9C.7 AI Generation & Validation State
@@ -905,13 +906,22 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
               4. Kunci, Pedoman & Rubrik
             </button>
             <button
+              onClick={() => setActiveTab('preview')}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition ${
+                activeTab === 'preview' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Eye className="w-4 h-4" />
+              5. Pratinjau
+            </button>
+            <button
               onClick={() => setActiveTab('validation')}
               className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition ${
                 activeTab === 'validation' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <CheckCircle2 className={`w-4 h-4 ${validationResult.valid ? 'text-emerald-600' : 'text-amber-600'}`} />
-              5. Validasi Status ({validationResult.errors.length} Error)
+              6. Validasi Status ({validationResult.errors.length} Error)
             </button>
           </div>
 
@@ -3008,7 +3018,54 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
               </div>
             )}
 
-            {/* TAB 5: VALIDATION & STATUS */}
+            {/* TAB 5: PREVIEW */}
+            {activeTab === 'preview' && (
+              <div className="space-y-6">
+                {(() => {
+                  try {
+                    const previewContext: DocumentGenerationContext = {
+                      school,
+                      profile,
+                      academicSetting,
+                      workspace,
+                      tp,
+                      k13Analysis,
+                      assessmentCriteria,
+                      assessmentPlans,
+                      assessmentPackages,
+                      activeAssessmentPackageId: activePackage.id,
+                      documentMode: 'data',
+                    };
+
+                    const previewModel = createAssessmentPreviewModel(previewContext, {
+                      documentMode: 'data',
+                    });
+
+                    return (
+                      <AssessmentDocumentPreview
+                        model={previewModel}
+                        workflowStatus={activePackage.workflowStatus}
+                        needsReview={activePackage.needsReview}
+                      />
+                    );
+                  } catch (err: any) {
+                    return (
+                      <div className="p-6 bg-red-50 border border-red-200 rounded-xl space-y-2 text-red-900">
+                        <div className="flex items-center gap-2 font-bold text-base">
+                          <AlertTriangle className="w-5 h-5 text-red-600" />
+                          <span>Pratinjau belum dapat dibuat.</span>
+                        </div>
+                        <p className="text-xs text-red-700">
+                          {err?.message || 'Terjadi kesalahan saat mengompilasi model dokumen pratinjau.'}
+                        </p>
+                      </div>
+                    );
+                  }
+                })()}
+              </div>
+            )}
+
+            {/* TAB 6: VALIDATION & STATUS */}
             {activeTab === 'validation' && (
               <div className="space-y-6">
                 <div
