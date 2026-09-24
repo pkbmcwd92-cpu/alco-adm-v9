@@ -402,7 +402,9 @@ function checkAllocationSemantics(
     case 'ITEM':
       return (
         instrumentType === 'WRITTEN_TEST' ||
-        instrumentType === 'ORAL_TEST'
+        instrumentType === 'ORAL_TEST' ||
+        instrumentType === 'SELF_ASSESSMENT' ||
+        instrumentType === 'PEER_ASSESSMENT'
       );
     case 'TASK':
       return ['PERFORMANCE', 'PROJECT', 'PRODUCT', 'ASSIGNMENT'].includes(instrumentType);

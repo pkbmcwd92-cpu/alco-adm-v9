@@ -41,6 +41,8 @@ import {
   PerformanceAspect,
   RubricCriterion,
   RubricScaleLevel,
+  SelfPeerAssessmentInstrument,
+  SelfPeerAssessmentItem,
   WrittenAssessmentItem,
   WrittenAssessmentItemType,
   WrittenAssessmentOption,
@@ -522,7 +524,29 @@ ATURAN GENERASI KETAT:
    - proposedAnswer: opsional sebagai respons yang diharapkan.
    JANGAN mengubah tes lisan menjadi MULTIPLE_CHOICE kecuali kontrak/konteks secara eksplisit memerlukannya.
 
-   C. TASK — PERFORMANCE / ASSIGNMENT / PROJECT / PRODUCT
+   C. ITEM — SELF_ASSESSMENT / PEER_ASSESSMENT
+   Gunakan field:
+   - coverageUnitId: WAJIB.
+   - itemType: WAJIB, gunakan SHORT_ANSWER sebagai transport-compatible itemType.
+   - prompt: WAJIB, berupa pernyataan (statement) penilaian diri atau penilaian antar-teman (refleksi/perilaku/sikap murid), bukan soal akademik yang memiliki satu jawaban benar.
+   - proposedAnswer tidak diperlukan (dilarang membuat kunci jawaban atau correct answer).
+   - jangan membuat pedoman penskoran atau kunci jawaban untuk SELF_ASSESSMENT atau PEER_ASSESSMENT.
+
+   Contoh Penilaian Diri:
+   {
+     "coverageUnitId": "...",
+     "itemType": "SHORT_ANSWER",
+     "prompt": "Saya dapat menjelaskan bagian yang sudah saya kuasai."
+   }
+
+   Contoh Penilaian Antar-Teman:
+   {
+     "coverageUnitId": "...",
+     "itemType": "SHORT_ANSWER",
+     "prompt": "Teman saya berkontribusi aktif dalam kerja kelompok."
+   }
+
+   D. TASK — PERFORMANCE / ASSIGNMENT / PROJECT / PRODUCT
    Gunakan field:
    - coverageUnitId: WAJIB.
    - taskPrompt: WAJIB, berupa instruksi tugas yang dapat dilakukan murid.
@@ -555,7 +579,7 @@ ATURAN GENERASI KETAT:
 
    sebagai field utama tugas.
 
-   D. EVIDENCE — PORTFOLIO
+   E. EVIDENCE — PORTFOLIO
    Gunakan field:
    - coverageUnitId: WAJIB.
    - evidenceRequirements: WAJIB, array string minimal 1 bukti.
@@ -573,7 +597,7 @@ ATURAN GENERASI KETAT:
      ]
    }
 
-   E. OBSERVATION — OBSERVATION
+   F. OBSERVATION — OBSERVATION
    Gunakan field:
    - coverageUnitId: WAJIB.
    - aspects: WAJIB, array minimal 1 objek.
@@ -855,7 +879,9 @@ export function parseAndValidateRawAIResponse(
       case 'ITEM': {
         const itemType =
           candidate.itemType ||
-          (contractUnit.instrumentType === 'ORAL_TEST'
+          (contractUnit.instrumentType === 'ORAL_TEST' ||
+          contractUnit.instrumentType === 'SELF_ASSESSMENT' ||
+          contractUnit.instrumentType === 'PEER_ASSESSMENT'
             ? 'SHORT_ANSWER'
             : 'MULTIPLE_CHOICE');
         if (!VALID_WRITTEN_ITEM_TYPES.has(itemType)) {
@@ -1512,6 +1538,38 @@ export function mapGeneratedUnitsToAssessmentPackage(
           instructions: undefined,
           items: oralItems,
         });
+        break;
+      }
+
+      case 'SELF_ASSESSMENT':
+      case 'PEER_ASSESSMENT': {
+        const selfPeerItems: SelfPeerAssessmentItem[] = [];
+        units.forEach((u, uIdx) => {
+          if (u.allocationUnit !== 'ITEM') return;
+          const itemUnit = u as GeneratedItemUnit;
+          const itemId = createDeterministicItemId(instId, uIdx);
+
+          const covItems = coverageToItemIds.get(u.coverageUnitId) || [];
+          covItems.push(itemId);
+          coverageToItemIds.set(u.coverageUnitId, covItems);
+
+          selfPeerItems.push({
+            id: itemId,
+            statement: itemUnit.prompt,
+            category: undefined,
+          });
+        });
+
+        const isSelf = instType === 'SELF_ASSESSMENT';
+        instruments.push({
+          id: instId,
+          type: instType,
+          title: isSelf
+            ? 'Instrumen Penilaian Diri (Draf AI)'
+            : 'Instrumen Penilaian Antar-Teman (Draf AI)',
+          instructions: undefined,
+          items: selfPeerItems,
+        } as SelfPeerAssessmentInstrument);
         break;
       }
 

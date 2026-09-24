@@ -1243,6 +1243,21 @@ export async function renderAssessmentDocx(
           })
         );
       });
+    } else if (
+      (inst.type === 'SELF_ASSESSMENT' || inst.type === 'PEER_ASSESSMENT') &&
+      inst.selfPeerItems
+    ) {
+      inst.selfPeerItems.forEach((it) => {
+        const text = it.category ? `${it.no}. ${it.statement} — ${it.category}` : `${it.no}. ${it.statement}`;
+        docChildren.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text, size: 20, font: 'Arial' }),
+            ],
+            spacing: { before: 40, after: 20 },
+          })
+        );
+      });
     }
 
     docChildren.push(new Paragraph({ spacing: { after: 120 } }));
@@ -1637,6 +1652,18 @@ export function renderAssessmentPdf(model: NormalizedAssessmentDocument): Blob {
           type: 'paragraph',
           text: `${it.no}. ${it.prompt}`,
           bold: true,
+          spacingAfter: 2,
+        });
+      });
+    } else if (
+      (inst.type === 'SELF_ASSESSMENT' || inst.type === 'PEER_ASSESSMENT') &&
+      inst.selfPeerItems
+    ) {
+      inst.selfPeerItems.forEach((it) => {
+        const text = it.category ? `${it.no}. ${it.statement} — ${it.category}` : `${it.no}. ${it.statement}`;
+        sections.push({
+          type: 'paragraph',
+          text,
           spacingAfter: 2,
         });
       });
