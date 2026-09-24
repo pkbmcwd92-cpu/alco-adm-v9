@@ -623,9 +623,6 @@ export function validateAssessmentPackage(
       }
       case 'PORTFOLIO': {
         const port = inst as PortfolioAssessmentInstrument;
-        if (!port.instructions || port.instructions.trim() === '') {
-          errors.push('Asesmen Portofolio wajib memiliki instruksi.');
-        }
         if (!port.evidenceRequirements || port.evidenceRequirements.length === 0) {
           errors.push('Asesmen Portofolio wajib mencantumkan persyaratan bukti (evidence requirements).');
         }

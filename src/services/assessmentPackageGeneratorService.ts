@@ -1066,7 +1066,7 @@ export function parseAndValidateRawAIResponse(
         const taskInstructions =
           typeof candidate.instructions === 'string' && candidate.instructions.trim()
             ? candidate.instructions.trim()
-            : taskPrompt;
+            : undefined;
 
         const expectedDeliverable =
           typeof candidate.expectedDeliverable === 'string' && candidate.expectedDeliverable.trim()
@@ -1592,6 +1592,7 @@ export function mapGeneratedUnitsToAssessmentPackage(
       case 'PERFORMANCE': {
         const aspects: PerformanceAspect[] = [];
         let combinedTask: string | undefined;
+        let performanceInstructions: string | undefined;
         let rubricId: string | undefined;
         let scoringGuideId: string | undefined;
 
@@ -1602,6 +1603,10 @@ export function mapGeneratedUnitsToAssessmentPackage(
 
           if (!combinedTask) {
             combinedTask = taskUnit.taskPrompt || taskUnit.instructions || taskUnit.taskTitle || taskUnit.expectedDeliverable;
+          }
+
+          if (!performanceInstructions && taskUnit.instructions) {
+            performanceInstructions = taskUnit.instructions;
           }
 
           const covItems =
@@ -1685,7 +1690,7 @@ export function mapGeneratedUnitsToAssessmentPackage(
           type: 'PERFORMANCE',
           title: 'Instrumen Penilaian Kinerja / Praktik (Draf AI)',
           task: combinedTask!,
-          instructions: undefined,
+          instructions: performanceInstructions,
           aspects: aspects.length > 0 ? aspects : undefined,
           rubricId,
           scoringGuideId,
@@ -1839,6 +1844,7 @@ export function mapGeneratedUnitsToAssessmentPackage(
         let rubricId: string | undefined;
         let scoringGuideId: string | undefined;
         let assignmentInstructions: string | undefined;
+        let expectedOutput: string | undefined;
 
         units.forEach((u) => {
           if (u.allocationUnit !== 'TASK') return;
@@ -1846,6 +1852,9 @@ export function mapGeneratedUnitsToAssessmentPackage(
 
           if (!assignmentInstructions) {
             assignmentInstructions = taskUnit.instructions || taskUnit.taskPrompt || taskUnit.taskTitle || taskUnit.expectedDeliverable;
+          }
+          if (!expectedOutput && taskUnit.expectedDeliverable) {
+            expectedOutput = taskUnit.expectedDeliverable;
           }
 
           if (taskUnit.rubricDraft && !rubricId) {
@@ -1858,6 +1867,7 @@ export function mapGeneratedUnitsToAssessmentPackage(
                 id: `crit-${rubricId}-${cIdx + 1}`,
                 label: c.label,
                 indicator: c.indicator,
+                weight: c.weight,
               })),
               scale: (taskUnit.rubricDraft.scale || []).map((s, sIdx) => ({
                 id: `scale-${rubricId}-${sIdx + 1}`,
@@ -1888,6 +1898,7 @@ export function mapGeneratedUnitsToAssessmentPackage(
           type: 'ASSIGNMENT',
           title: 'Instrumen Penugasan (Draf AI)',
           instructions: assignmentInstructions!,
+          expectedOutput,
           rubricId,
           scoringGuideId,
         });
@@ -1898,6 +1909,7 @@ export function mapGeneratedUnitsToAssessmentPackage(
         let rubricId: string | undefined;
         let scoringGuideId: string | undefined;
         let projectBrief: string | undefined;
+        let expectedDeliverable: string | undefined;
 
         units.forEach((u) => {
           if (u.allocationUnit !== 'TASK') return;
@@ -1905,6 +1917,9 @@ export function mapGeneratedUnitsToAssessmentPackage(
 
           if (!projectBrief) {
             projectBrief = taskUnit.taskPrompt || taskUnit.instructions || taskUnit.taskTitle || taskUnit.expectedDeliverable;
+          }
+          if (!expectedDeliverable && taskUnit.expectedDeliverable) {
+            expectedDeliverable = taskUnit.expectedDeliverable;
           }
 
           if (taskUnit.rubricDraft && !rubricId) {
@@ -1917,6 +1932,7 @@ export function mapGeneratedUnitsToAssessmentPackage(
                 id: `crit-${rubricId}-${cIdx + 1}`,
                 label: c.label,
                 indicator: c.indicator,
+                weight: c.weight,
               })),
               scale: (taskUnit.rubricDraft.scale || []).map((s, sIdx) => ({
                 id: `scale-${rubricId}-${sIdx + 1}`,
@@ -1947,6 +1963,7 @@ export function mapGeneratedUnitsToAssessmentPackage(
           type: 'PROJECT',
           title: 'Instrumen Penilaian Proyek (Draf AI)',
           projectBrief: projectBrief!,
+          expectedDeliverable,
           rubricId,
           scoringGuideId,
         });
@@ -1957,6 +1974,7 @@ export function mapGeneratedUnitsToAssessmentPackage(
         let rubricId: string | undefined;
         let scoringGuideId: string | undefined;
         let productBrief: string | undefined;
+        let expectedProduct: string | undefined;
 
         units.forEach((u) => {
           if (u.allocationUnit !== 'TASK') return;
@@ -1964,6 +1982,9 @@ export function mapGeneratedUnitsToAssessmentPackage(
 
           if (!productBrief) {
             productBrief = taskUnit.taskPrompt || taskUnit.instructions || taskUnit.taskTitle || taskUnit.expectedDeliverable;
+          }
+          if (!expectedProduct && taskUnit.expectedDeliverable) {
+            expectedProduct = taskUnit.expectedDeliverable;
           }
 
           if (taskUnit.rubricDraft && !rubricId) {
@@ -1976,6 +1997,7 @@ export function mapGeneratedUnitsToAssessmentPackage(
                 id: `crit-${rubricId}-${cIdx + 1}`,
                 label: c.label,
                 indicator: c.indicator,
+                weight: c.weight,
               })),
               scale: (taskUnit.rubricDraft.scale || []).map((s, sIdx) => ({
                 id: `scale-${rubricId}-${sIdx + 1}`,
@@ -2006,6 +2028,7 @@ export function mapGeneratedUnitsToAssessmentPackage(
           type: 'PRODUCT',
           title: 'Instrumen Penilaian Produk (Draf AI)',
           productBrief: productBrief!,
+          expectedProduct,
           rubricId,
           scoringGuideId,
         });

@@ -99,7 +99,11 @@ export interface NormalizedAssessmentInstrument {
   writtenItems?: NormalizedWrittenItem[];
   oralItems?: NormalizedOralItem[];
   task?: string;
-  performanceAspects?: { label: string; description?: string }[];
+  performanceAspects?: {
+    label: string;
+    description?: string;
+    weight?: number;
+  }[];
   expectedOutput?: string;
   projectBrief?: string;
   expectedDeliverable?: string;
@@ -135,6 +139,7 @@ export interface NormalizedAssessmentRubricScale {
 export interface NormalizedAssessmentRubricCriterion {
   label: string;
   descriptors: string[];
+  weight?: number;
 }
 
 export interface NormalizedAssessmentRubric {

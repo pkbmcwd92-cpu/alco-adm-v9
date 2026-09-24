@@ -530,6 +530,7 @@ export function buildNormalizedAssessmentDocumentModel(
             base.performanceAspects = inst.aspects?.map((a) => ({
               label: a.label,
               description: a.description,
+              weight: a.weight,
             }));
             break;
           }
@@ -634,6 +635,7 @@ export function buildNormalizedAssessmentDocumentModel(
           return {
             label: c.label + (c.indicator ? ` (${c.indicator})` : ''),
             descriptors,
+            weight: c.weight,
           };
         });
 
@@ -1111,12 +1113,16 @@ export async function renderAssessmentDocx(
           })
         );
         inst.performanceAspects.forEach((asp, aIdx) => {
+          let text = `- ${asp.label}${asp.description ? `: ${asp.description}` : ''}`;
+          if (asp.weight !== undefined) {
+            text += ` — Bobot: ${asp.weight}`;
+          }
           docChildren.push(
             new Paragraph({
               indent: { left: 360 },
               children: [
                 new TextRun({
-                  text: `- ${asp.label}${asp.description ? `: ${asp.description}` : ''}`,
+                  text,
                   size: 19,
                   font: 'Arial',
                 }),
@@ -1170,6 +1176,17 @@ export async function renderAssessmentDocx(
               new TextRun({ text: inst.productBrief, size: 19, font: 'Arial' }),
             ],
             spacing: { after: 40 },
+          })
+        );
+      }
+      if (inst.expectedProduct) {
+        docChildren.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: 'Produk / Hasil yang Diharapkan: ', bold: true, size: 19, font: 'Arial' }),
+              new TextRun({ text: inst.expectedProduct, size: 19, font: 'Arial' }),
+            ],
+            spacing: { after: 60 },
           })
         );
       }
@@ -1406,7 +1423,12 @@ export async function renderAssessmentDocx(
           (c) =>
             new TableRow({
               children: [
-                createTableDataCell(c.label, critWidth, AlignmentType.LEFT, true),
+                createTableDataCell(
+                  c.weight !== undefined ? `${c.label} — Bobot: ${c.weight}` : c.label,
+                  critWidth,
+                  AlignmentType.LEFT,
+                  true
+                ),
                 ...c.descriptors.map((d) => createTableDataCell(d, scaleWidth)),
               ],
             })
@@ -1567,9 +1589,13 @@ export function renderAssessmentPdf(model: NormalizedAssessmentDocument): Blob {
       }
       if (inst.performanceAspects && inst.performanceAspects.length > 0) {
         inst.performanceAspects.forEach((asp) => {
+          let text = `• ${asp.label}${asp.description ? `: ${asp.description}` : ''}`;
+          if (asp.weight !== undefined) {
+            text += ` — Bobot: ${asp.weight}`;
+          }
           sections.push({
             type: 'paragraph',
-            text: `• ${asp.label}${asp.description ? `: ${asp.description}` : ''}`,
+            text,
             spacingAfter: 1,
           });
         });
@@ -1604,6 +1630,14 @@ export function renderAssessmentPdf(model: NormalizedAssessmentDocument): Blob {
         sections.push({
           type: 'paragraph',
           text: `Spesifikasi Produk: ${inst.productBrief}`,
+          spacingAfter: 2,
+        });
+      }
+      if (inst.expectedProduct) {
+        sections.push({
+          type: 'paragraph',
+          text: `Produk / Hasil yang Diharapkan: ${inst.expectedProduct}`,
+          bold: true,
           spacingAfter: 2,
         });
       }
@@ -1745,7 +1779,10 @@ export function renderAssessmentPdf(model: NormalizedAssessmentDocument): Blob {
         })),
       ];
 
-      const rows = rub.criteria.map((c) => [c.label, ...c.descriptors]);
+      const rows = rub.criteria.map((c) => [
+        c.weight !== undefined ? `${c.label} — Bobot: ${c.weight}` : c.label,
+        ...c.descriptors,
+      ]);
 
       sections.push({
         type: 'table',
