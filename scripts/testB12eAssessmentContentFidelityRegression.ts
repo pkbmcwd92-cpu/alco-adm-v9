@@ -48,6 +48,8 @@ function runTests() {
       { id: 'cov-proj-1', evidenceType: 'PRODUCT' } as any,
       { id: 'cov-prod-1', evidenceType: 'PRODUCT' } as any,
       { id: 'cov-rub-1', evidenceType: 'PRODUCT' } as any,
+      { id: 'cov-rub-assign', evidenceType: 'PRODUCT' } as any,
+      { id: 'cov-rub-prod', evidenceType: 'PRODUCT' } as any,
       { id: 'cov-prod-empty', evidenceType: 'PRODUCT' } as any,
     ],
     generationSpec: {
@@ -383,7 +385,7 @@ function runTests() {
   // ----------------------------------------------------
   // TEST 7 — RUBRIC CRITERIA WEIGHT PRESERVED
   // ----------------------------------------------------
-  test('TEST 7: Rubric criteria weights are preserved in package and normalized model', () => {
+  test('TEST 7: Rubric criteria weights are preserved in package and normalized model (PROJECT)', () => {
     const contract: AssessmentGenerationContract = {
       assessmentPlanId: 'plan-b12e',
       subjectProfile: defaultSubjectProfile,
@@ -448,6 +450,160 @@ function runTests() {
   });
 
   // ----------------------------------------------------
+  // TEST 7b — ASSIGNMENT RUBRIC WEIGHT PRESERVED
+  // ----------------------------------------------------
+  test('TEST 7b: Assignment rubric criteria weights are preserved in package and normalized model', () => {
+    const contract: AssessmentGenerationContract = {
+      assessmentPlanId: 'plan-b12e',
+      subjectProfile: defaultSubjectProfile,
+      units: [
+        {
+          coverageUnitId: 'cov-rub-assign',
+          allocationUnit: 'TASK',
+          instrumentType: 'ASSIGNMENT',
+          objectiveRefId: 'tp-1',
+          requiredCount: 1,
+        } as any,
+      ],
+    };
+
+    const rawAI = JSON.stringify({
+      units: [
+        {
+          coverageUnitId: 'cov-rub-assign',
+          taskPrompt: 'Susun laporan singkat.',
+          rubricDraft: {
+            title: 'Rubrik Penugasan',
+            criteria: [
+              {
+                label: 'Ketepatan Isi',
+                indicator: 'Isi sesuai materi.',
+                weight: 60,
+              },
+              {
+                label: 'Kerapian',
+                indicator: 'Laporan disusun rapi.',
+                weight: 40,
+              },
+            ],
+            scale: [
+              {
+                label: 'Baik',
+                score: 3,
+                descriptor: 'Memenuhi kriteria.',
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const parsed = parseAndValidateRawAIResponse(rawAI, contract);
+    const pkg = mapGeneratedUnitsToAssessmentPackage(parsed.validatedUnits, contract, basePlan);
+    assert(pkg.rubrics && pkg.rubrics.length === 1);
+    assert.strictEqual(pkg.rubrics[0].criteria[0].weight, 60);
+    assert.strictEqual(pkg.rubrics[0].criteria[1].weight, 40);
+
+    const snapshot: AssessmentDocumentSnapshot = {
+      assessmentPackageId: pkg.id,
+      assessmentPlanId: 'plan-b12e',
+      school: {} as any,
+      teacher: {} as any,
+      academicSetting: {} as any,
+      assessmentPlan: { id: 'plan-b12e', title: 'Plan B12e' } as any,
+      blueprintItems: [],
+      instruments: pkg.instruments,
+      answerKeys: [],
+      scoringGuides: [],
+      rubrics: pkg.rubrics,
+      resolvedObjectives: {},
+      documentMode: 'data',
+      generatedAt: new Date().toISOString(),
+    } as any;
+
+    const model = buildNormalizedAssessmentDocumentModel(snapshot);
+    assert.strictEqual(model.rubrics.list[0].criteria[0].weight, 60);
+    assert.strictEqual(model.rubrics.list[0].criteria[1].weight, 40);
+  });
+
+  // ----------------------------------------------------
+  // TEST 7c — PRODUCT RUBRIC WEIGHT PRESERVED
+  // ----------------------------------------------------
+  test('TEST 7c: Product rubric criteria weights are preserved in package and normalized model', () => {
+    const contract: AssessmentGenerationContract = {
+      assessmentPlanId: 'plan-b12e',
+      subjectProfile: defaultSubjectProfile,
+      units: [
+        {
+          coverageUnitId: 'cov-rub-prod',
+          allocationUnit: 'TASK',
+          instrumentType: 'PRODUCT',
+          objectiveRefId: 'tp-1',
+          requiredCount: 1,
+        } as any,
+      ],
+    };
+
+    const rawAI = JSON.stringify({
+      units: [
+        {
+          coverageUnitId: 'cov-rub-prod',
+          taskPrompt: 'Buat model tiga dimensi.',
+          rubricDraft: {
+            title: 'Rubrik Produk',
+            criteria: [
+              {
+                label: 'Fungsi',
+                indicator: 'Produk berfungsi sesuai tujuan.',
+                weight: 70,
+              },
+              {
+                label: 'Kerapian',
+                indicator: 'Produk tersusun rapi.',
+                weight: 30,
+              },
+            ],
+            scale: [
+              {
+                label: 'Baik',
+                score: 3,
+                descriptor: 'Memenuhi kriteria.',
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const parsed = parseAndValidateRawAIResponse(rawAI, contract);
+    const pkg = mapGeneratedUnitsToAssessmentPackage(parsed.validatedUnits, contract, basePlan);
+    assert(pkg.rubrics && pkg.rubrics.length === 1);
+    assert.strictEqual(pkg.rubrics[0].criteria[0].weight, 70);
+    assert.strictEqual(pkg.rubrics[0].criteria[1].weight, 30);
+
+    const snapshot: AssessmentDocumentSnapshot = {
+      assessmentPackageId: pkg.id,
+      assessmentPlanId: 'plan-b12e',
+      school: {} as any,
+      teacher: {} as any,
+      academicSetting: {} as any,
+      assessmentPlan: { id: 'plan-b12e', title: 'Plan B12e' } as any,
+      blueprintItems: [],
+      instruments: pkg.instruments,
+      answerKeys: [],
+      scoringGuides: [],
+      rubrics: pkg.rubrics,
+      resolvedObjectives: {},
+      documentMode: 'data',
+      generatedAt: new Date().toISOString(),
+    } as any;
+
+    const model = buildNormalizedAssessmentDocumentModel(snapshot);
+    assert.strictEqual(model.rubrics.list[0].criteria[0].weight, 70);
+    assert.strictEqual(model.rubrics.list[0].criteria[1].weight, 30);
+  });
+
+  // ----------------------------------------------------
   // TEST 8 — PORTFOLIO WITHOUT INSTRUCTIONS PASSES VALIDATION
   // ----------------------------------------------------
   test('TEST 8: Portfolio instrument without instructions passes package validation', () => {
@@ -489,6 +645,98 @@ function runTests() {
       hasPortfolioInstructionError,
       false,
       'validateAssessmentPackage must not require instructions for PORTFOLIO'
+    );
+  });
+
+  // ----------------------------------------------------
+  // TEST 8b — PORTFOLIO EVIDENCE REQUIRED (EMPTY ARRAY)
+  // ----------------------------------------------------
+  test('TEST 8b: Portfolio instrument with empty evidenceRequirements is invalid', () => {
+    const invalidPortfolioPkg: AssessmentPackage = {
+      id: 'pkg-port-invalid-empty',
+      assessmentPlanId: 'plan-port-invalid',
+      academicSettingId: 'setting-1',
+      title: 'Perangkat Portofolio Invalid Empty',
+      blueprintItems: [],
+      instruments: [
+        {
+          id: 'inst-port-invalid-1',
+          type: 'PORTFOLIO',
+          title: 'Instrumen Portofolio',
+          instructions: undefined,
+          evidenceRequirements: [],
+        } as PortfolioAssessmentInstrument,
+      ],
+      answerKeys: [],
+      scoringGuides: [],
+      rubrics: [],
+      workflowStatus: 'DRAFT',
+      needsReview: false,
+      revision: 1,
+      provenance: {
+        generatedBy: 'TEACHER',
+        generatedAt: new Date().toISOString(),
+      },
+    };
+
+    const result = validateAssessmentPackage(invalidPortfolioPkg, {
+      assessmentPlan: { id: 'plan-port-invalid', title: 'Rencana Portofolio' } as any,
+    });
+
+    assert.strictEqual(result.valid, false, 'Portfolio without evidence requirements must be invalid');
+    const hasEvidenceError = result.errors.some((e) =>
+      e.includes('persyaratan bukti')
+    );
+    assert.strictEqual(
+      hasEvidenceError,
+      true,
+      'validateAssessmentPackage must fail when portfolio evidenceRequirements is empty'
+    );
+  });
+
+  // ----------------------------------------------------
+  // TEST 8c — PORTFOLIO EVIDENCE REQUIRED (UNDEFINED)
+  // ----------------------------------------------------
+  test('TEST 8c: Portfolio instrument with undefined evidenceRequirements is invalid', () => {
+    const invalidPortfolioPkg: AssessmentPackage = {
+      id: 'pkg-port-invalid-undef',
+      assessmentPlanId: 'plan-port-invalid',
+      academicSettingId: 'setting-1',
+      title: 'Perangkat Portofolio Invalid Undefined',
+      blueprintItems: [],
+      instruments: [
+        {
+          id: 'inst-port-invalid-2',
+          type: 'PORTFOLIO',
+          title: 'Instrumen Portofolio',
+          instructions: undefined,
+          evidenceRequirements: undefined as any,
+        } as PortfolioAssessmentInstrument,
+      ],
+      answerKeys: [],
+      scoringGuides: [],
+      rubrics: [],
+      workflowStatus: 'DRAFT',
+      needsReview: false,
+      revision: 1,
+      provenance: {
+        generatedBy: 'TEACHER',
+        generatedAt: new Date().toISOString(),
+      },
+    };
+
+    const result = validateAssessmentPackage(invalidPortfolioPkg, {
+      assessmentPlan: { id: 'plan-port-invalid', title: 'Rencana Portofolio' } as any,
+    });
+
+    assert.strictEqual(result.valid, false, 'Portfolio with undefined evidence requirements must be invalid');
+    const hasEvidenceError = result.errors.some((e) =>
+      e.includes('persyaratan bukti')
+    );
+    assert.strictEqual(
+      hasEvidenceError,
+      true,
+      'validateAssessmentPackage must fail when portfolio evidenceRequirements is undefined'
     );
   });
 
