@@ -22,6 +22,7 @@ import {
   buildGenerationContract,
   buildGenerationPrompts,
   generateAssessmentPackageDraft,
+  parseAndValidateRawAIResponse,
 } from '../src/services/assessmentPackageGeneratorService';
 import { validateAssessmentCoverage } from '../src/services/assessmentCoverageValidationService';
 import { buildNormalizedAssessmentDocumentModel } from '../src/services/documentEngine/assessmentExportService';
@@ -668,6 +669,269 @@ async function runTestSuite() {
     assert(
       countOccurrences >= 2,
       'Export service must handle SELF/PEER rendering in both DOCX and PDF sections'
+    );
+  });
+
+  // ----------------------------------------------------
+  // TEST A10 — SELF WRONG ITEM TYPE REJECTED
+  // ----------------------------------------------------
+  test('A10: SELF_ASSESSMENT with MULTIPLE_CHOICE itemType is rejected with INVALID_SELF_PEER_ITEM_TYPE', () => {
+    const selfPlan: AssessmentPlan = {
+      id: 'plan-self-a10',
+      academicSettingId: 'setting-sd-4',
+      title: 'Asesmen Diri A10',
+      purpose: 'FORMATIVE',
+      timing: 'POST',
+      scopeType: 'TP',
+      tpIds: ['tp-1'],
+      criterionIds: ['crit-1'],
+      instruments: [{ id: 'inst-self-a10', type: 'SELF_ASSESSMENT', label: 'Penilaian Diri' }],
+      workflowStatus: 'SIAP',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const spec = resolveAssessmentGenerationSpec({
+      academicSetting: mockAcademicSetting,
+      assessmentPlan: selfPlan,
+      tp: mockTP,
+      assessmentCriteria: mockCriteria,
+    });
+
+    const plan = resolveAssessmentGenerationPlan({
+      generationSpec: spec,
+    });
+
+    const contract = buildGenerationContract(plan);
+    const selfCuId = contract.units[0].coverageUnitId;
+
+    const rawResponse = JSON.stringify([
+      {
+        coverageUnitId: selfCuId,
+        itemType: 'MULTIPLE_CHOICE',
+        prompt: 'Manakah perilaku yang paling tepat?',
+        options: [{ text: 'A' }, { text: 'B' }],
+      },
+    ]);
+
+    const result = parseAndValidateRawAIResponse(rawResponse, contract);
+
+    assert.strictEqual(result.validatedUnits.length, 0, 'No units should be validated for invalid itemType');
+    assert(result.failedCoverageUnitIds.includes(selfCuId), 'failedCoverageUnitIds must include the self coverage unit ID');
+    assert(
+      result.issues.some((issue) => issue.code === 'INVALID_SELF_PEER_ITEM_TYPE'),
+      'Must record INVALID_SELF_PEER_ITEM_TYPE issue'
+    );
+  });
+
+  // ----------------------------------------------------
+  // TEST A11 — PEER WRONG ITEM TYPE REJECTED
+  // ----------------------------------------------------
+  test('A11: PEER_ASSESSMENT with ESSAY itemType is rejected with INVALID_SELF_PEER_ITEM_TYPE', () => {
+    const peerPlan: AssessmentPlan = {
+      id: 'plan-peer-a11',
+      academicSettingId: 'setting-sd-4',
+      title: 'Asesmen Teman A11',
+      purpose: 'FORMATIVE',
+      timing: 'POST',
+      scopeType: 'TP',
+      tpIds: ['tp-1'],
+      criterionIds: ['crit-1'],
+      instruments: [{ id: 'inst-peer-a11', type: 'PEER_ASSESSMENT', label: 'Penilaian Teman' }],
+      workflowStatus: 'SIAP',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const spec = resolveAssessmentGenerationSpec({
+      academicSetting: mockAcademicSetting,
+      assessmentPlan: peerPlan,
+      tp: mockTP,
+      assessmentCriteria: mockCriteria,
+    });
+
+    const plan = resolveAssessmentGenerationPlan({
+      generationSpec: spec,
+    });
+
+    const contract = buildGenerationContract(plan);
+    const peerCuId = contract.units[0].coverageUnitId;
+
+    const rawResponse = JSON.stringify([
+      {
+        coverageUnitId: peerCuId,
+        itemType: 'ESSAY',
+        prompt: 'Jelaskan kualitas temanmu.',
+      },
+    ]);
+
+    const result = parseAndValidateRawAIResponse(rawResponse, contract);
+
+    assert.strictEqual(result.validatedUnits.length, 0, 'No units should be validated for invalid itemType');
+    assert(result.failedCoverageUnitIds.includes(peerCuId), 'failedCoverageUnitIds must include peer coverage unit ID');
+    assert(
+      result.issues.some((issue) => issue.code === 'INVALID_SELF_PEER_ITEM_TYPE'),
+      'Must record INVALID_SELF_PEER_ITEM_TYPE issue'
+    );
+  });
+
+  // ----------------------------------------------------
+  // TEST A12 — SELF MISSING ITEM TYPE REJECTED
+  // ----------------------------------------------------
+  test('A12: SELF_ASSESSMENT with missing itemType is rejected with INVALID_SELF_PEER_ITEM_TYPE without fallback', () => {
+    const selfPlan: AssessmentPlan = {
+      id: 'plan-self-a12',
+      academicSettingId: 'setting-sd-4',
+      title: 'Asesmen Diri A12',
+      purpose: 'FORMATIVE',
+      timing: 'POST',
+      scopeType: 'TP',
+      tpIds: ['tp-1'],
+      criterionIds: ['crit-1'],
+      instruments: [{ id: 'inst-self-a12', type: 'SELF_ASSESSMENT', label: 'Penilaian Diri' }],
+      workflowStatus: 'SIAP',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const spec = resolveAssessmentGenerationSpec({
+      academicSetting: mockAcademicSetting,
+      assessmentPlan: selfPlan,
+      tp: mockTP,
+      assessmentCriteria: mockCriteria,
+    });
+
+    const plan = resolveAssessmentGenerationPlan({
+      generationSpec: spec,
+    });
+
+    const contract = buildGenerationContract(plan);
+    const selfCuId = contract.units[0].coverageUnitId;
+
+    const rawResponse = JSON.stringify([
+      {
+        coverageUnitId: selfCuId,
+        prompt: 'Saya berpartisipasi aktif dalam diskusi kelompok.',
+      },
+    ]);
+
+    const result = parseAndValidateRawAIResponse(rawResponse, contract);
+
+    assert.strictEqual(result.validatedUnits.length, 0, 'No units should be validated when itemType is missing');
+    assert(result.failedCoverageUnitIds.includes(selfCuId), 'failedCoverageUnitIds must include self coverage unit ID');
+    assert(
+      result.issues.some((issue) => issue.code === 'INVALID_SELF_PEER_ITEM_TYPE'),
+      'Must record INVALID_SELF_PEER_ITEM_TYPE issue'
+    );
+  });
+
+  // ----------------------------------------------------
+  // TEST A13 — PEER MISSING ITEM TYPE REJECTED
+  // ----------------------------------------------------
+  test('A13: PEER_ASSESSMENT with missing itemType is rejected with INVALID_SELF_PEER_ITEM_TYPE without fallback', () => {
+    const peerPlan: AssessmentPlan = {
+      id: 'plan-peer-a13',
+      academicSettingId: 'setting-sd-4',
+      title: 'Asesmen Teman A13',
+      purpose: 'FORMATIVE',
+      timing: 'POST',
+      scopeType: 'TP',
+      tpIds: ['tp-1'],
+      criterionIds: ['crit-1'],
+      instruments: [{ id: 'inst-peer-a13', type: 'PEER_ASSESSMENT', label: 'Penilaian Teman' }],
+      workflowStatus: 'SIAP',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const spec = resolveAssessmentGenerationSpec({
+      academicSetting: mockAcademicSetting,
+      assessmentPlan: peerPlan,
+      tp: mockTP,
+      assessmentCriteria: mockCriteria,
+    });
+
+    const plan = resolveAssessmentGenerationPlan({
+      generationSpec: spec,
+    });
+
+    const contract = buildGenerationContract(plan);
+    const peerCuId = contract.units[0].coverageUnitId;
+
+    const rawResponse = JSON.stringify([
+      {
+        coverageUnitId: peerCuId,
+        prompt: 'Teman saya menghargai pendapat anggota kelompok.',
+      },
+    ]);
+
+    const result = parseAndValidateRawAIResponse(rawResponse, contract);
+
+    assert.strictEqual(result.validatedUnits.length, 0, 'No units should be validated when itemType is missing');
+    assert(result.failedCoverageUnitIds.includes(peerCuId), 'failedCoverageUnitIds must include peer coverage unit ID');
+    assert(
+      result.issues.some((issue) => issue.code === 'INVALID_SELF_PEER_ITEM_TYPE'),
+      'Must record INVALID_SELF_PEER_ITEM_TYPE issue'
+    );
+  });
+
+  // ----------------------------------------------------
+  // TEST A14 — VALID SELF/PEER TETAP LOLOS
+  // ----------------------------------------------------
+  test('A14: Direct parser assertion: SELF and PEER with SHORT_ANSWER are successfully validated', () => {
+    const hybridPlan: AssessmentPlan = {
+      id: 'plan-hybrid-a14',
+      academicSettingId: 'setting-sd-4',
+      title: 'Asesmen Hybrid A14',
+      purpose: 'FORMATIVE',
+      timing: 'POST',
+      scopeType: 'TP',
+      tpIds: ['tp-1'],
+      criterionIds: ['crit-1'],
+      instruments: [
+        { id: 'inst-s-a14', type: 'SELF_ASSESSMENT', label: 'Diri' },
+        { id: 'inst-p-a14', type: 'PEER_ASSESSMENT', label: 'Teman' },
+      ],
+      workflowStatus: 'SIAP',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const spec = resolveAssessmentGenerationSpec({
+      academicSetting: mockAcademicSetting,
+      assessmentPlan: hybridPlan,
+      tp: mockTP,
+      assessmentCriteria: mockCriteria,
+    });
+
+    const plan = resolveAssessmentGenerationPlan({
+      generationSpec: spec,
+    });
+
+    const contract = buildGenerationContract(plan);
+    const selfCu = contract.units.find((u) => u.instrumentType === 'SELF_ASSESSMENT')!;
+    const peerCu = contract.units.find((u) => u.instrumentType === 'PEER_ASSESSMENT')!;
+
+    const rawResponse = JSON.stringify([
+      {
+        coverageUnitId: selfCu.coverageUnitId,
+        itemType: 'SHORT_ANSWER',
+        prompt: 'Saya memahami materi musyawarah.',
+      },
+      {
+        coverageUnitId: peerCu.coverageUnitId,
+        itemType: 'SHORT_ANSWER',
+        prompt: 'Teman saya mendengarkan penjelasan.',
+      },
+    ]);
+
+    const result = parseAndValidateRawAIResponse(rawResponse, contract);
+
+    assert.strictEqual(result.validatedUnits.length, 2, 'Both units should be successfully validated');
+    assert.strictEqual(result.failedCoverageUnitIds.length, 0, 'No failed coverage units');
+    assert(
+      !result.issues.some((issue) => issue.code === 'INVALID_SELF_PEER_ITEM_TYPE'),
+      'No INVALID_SELF_PEER_ITEM_TYPE issue should be present'
     );
   });
 

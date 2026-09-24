@@ -877,11 +877,27 @@ export function parseAndValidateRawAIResponse(
     // Semantic Family Validation
     switch (contractUnit.allocationUnit) {
       case 'ITEM': {
+        const isSelfPeerAssessment =
+          contractUnit.instrumentType === 'SELF_ASSESSMENT' ||
+          contractUnit.instrumentType === 'PEER_ASSESSMENT';
+
+        if (
+          isSelfPeerAssessment &&
+          candidate.itemType !== 'SHORT_ANSWER'
+        ) {
+          issues.push({
+            code: 'INVALID_SELF_PEER_ITEM_TYPE',
+            severity: 'REVIEW',
+            message:
+              `Kandidat ITEM #${idx + 1} untuk ${contractUnit.instrumentType} wajib menggunakan itemType SHORT_ANSWER.`,
+            objectiveRefId: contractUnit.objectiveRefId,
+          });
+          return;
+        }
+
         const itemType =
           candidate.itemType ||
-          (contractUnit.instrumentType === 'ORAL_TEST' ||
-          contractUnit.instrumentType === 'SELF_ASSESSMENT' ||
-          contractUnit.instrumentType === 'PEER_ASSESSMENT'
+          (contractUnit.instrumentType === 'ORAL_TEST'
             ? 'SHORT_ANSWER'
             : 'MULTIPLE_CHOICE');
         if (!VALID_WRITTEN_ITEM_TYPES.has(itemType)) {
