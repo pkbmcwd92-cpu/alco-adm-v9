@@ -193,9 +193,28 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
       const oldInst = activePackage.instruments.find((i) => i.id === inst.id);
       if (oldInst) {
         inst.provenance = JSON.parse(JSON.stringify((oldInst as any).provenance || {}));
-        const fieldsToCheck = ['task', 'instructions', 'expectedOutput', 'projectBrief', 'productBrief'];
-        fieldsToCheck.forEach((f) => {
+        const primitiveFields = [
+          'title',
+          'task',
+          'instructions',
+          'expectedOutput',
+          'projectBrief',
+          'expectedDeliverable',
+          'productBrief',
+          'expectedProduct',
+          'recordingScheme',
+          'responseScheme',
+        ];
+        primitiveFields.forEach((f) => {
           if (inst[f] !== (oldInst as any)[f]) {
+            inst.provenance = inst.provenance || {};
+            inst.provenance.fields = inst.provenance.fields || {};
+            inst.provenance.fields[f] = 'TEACHER_EDITED';
+          }
+        });
+        const objectOrArrayFields = ['evidenceRequirements', 'items', 'aspects'];
+        objectOrArrayFields.forEach((f) => {
+          if (JSON.stringify(inst[f]) !== JSON.stringify((oldInst as any)[f])) {
             inst.provenance = inst.provenance || {};
             inst.provenance.fields = inst.provenance.fields || {};
             inst.provenance.fields[f] = 'TEACHER_EDITED';
@@ -1821,86 +1840,835 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
                   </div>
                 )}
 
+                {/* ORAL TEST EDITOR */}
+                {activeInstType === 'ORAL_TEST' && (() => {
+                  const oralInst = activePackage.instruments.find((i) => i.type === 'ORAL_TEST') as OralAssessmentInstrument | undefined;
+                  if (!oralInst) {
+                    return (
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-xs italic">
+                        Instrumen Tes Lisan belum tersedia pada paket asesmen.
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-4">
+                      <h4 className="text-base font-bold text-slate-800">Instrumen Tes Lisan</h4>
+
+                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Judul Instrumen:</label>
+                          <input
+                            type="text"
+                            value={oralInst.title || ''}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === oralInst.id ? { ...oralInst, title: e.target.value } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Judul instrumen tes lisan..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Petunjuk:</label>
+                          <textarea
+                            rows={2}
+                            value={oralInst.instructions || ''}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === oralInst.id ? { ...oralInst, instructions: e.target.value || undefined } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Petunjuk pelaksanaan tes lisan..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h5 className="text-xs font-bold text-slate-700">Daftar Pertanyaan Lisan ({oralInst.items?.length || 0} butir):</h5>
+                        {(!oralInst.items || oralInst.items.length === 0) && (
+                          <p className="text-slate-500 text-xs italic">Belum ada butir pertanyaan tes lisan.</p>
+                        )}
+                        {(oralInst.items || []).map((item, idx) => (
+                          <div key={item.id} className="p-3 bg-white border border-slate-200 rounded-lg space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                                #{idx + 1}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">ID: {item.id}</span>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">Pertanyaan:</label>
+                              <textarea
+                                rows={2}
+                                value={item.prompt}
+                                onChange={(e) => {
+                                  const updatedItems = oralInst.items.map((it) =>
+                                    it.id === item.id ? { ...it, prompt: e.target.value } : it
+                                  );
+                                  const updatedInstruments = activePackage.instruments.map((inst) =>
+                                    inst.id === oralInst.id ? { ...oralInst, items: updatedItems } : inst
+                                  );
+                                  updatePackage({ ...activePackage, instruments: updatedInstruments });
+                                }}
+                                placeholder="Teks pertanyaan lisan..."
+                                className="text-xs p-2 border border-slate-300 rounded w-full bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">Respons yang Diharapkan:</label>
+                              <textarea
+                                rows={2}
+                                value={item.expectedResponse || ''}
+                                onChange={(e) => {
+                                  const updatedItems = oralInst.items.map((it) =>
+                                    it.id === item.id ? { ...it, expectedResponse: e.target.value || undefined } : it
+                                  );
+                                  const updatedInstruments = activePackage.instruments.map((inst) =>
+                                    inst.id === oralInst.id ? { ...oralInst, items: updatedItems } : inst
+                                  );
+                                  updatePackage({ ...activePackage, instruments: updatedInstruments });
+                                }}
+                                placeholder="Respons atau poin jawaban yang diharapkan (opsional)..."
+                                className="text-xs p-2 border border-slate-300 rounded w-full bg-white"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* PERFORMANCE EDITOR */}
+                {activeInstType === 'PERFORMANCE' && (() => {
+                  const perfInst = activePackage.instruments.find((i) => i.type === 'PERFORMANCE') as PerformanceAssessmentInstrument | undefined;
+                  if (!perfInst) {
+                    return (
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-xs italic">
+                        Instrumen Unjuk Kerja / Kinerja belum tersedia pada paket asesmen.
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-4">
+                      <h4 className="text-base font-bold text-slate-800">Instrumen Unjuk Kerja / Praktik / Kinerja</h4>
+
+                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Judul Instrumen:</label>
+                          <input
+                            type="text"
+                            value={perfInst.title || ''}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === perfInst.id ? { ...perfInst, title: e.target.value } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Judul instrumen unjuk kerja..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Tugas Praktik/Kinerja:</label>
+                          <textarea
+                            rows={3}
+                            value={perfInst.task}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === perfInst.id ? { ...perfInst, task: e.target.value } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Deskripsi tugas kinerja / praktik yang harus dilakukan siswa..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Petunjuk Pelaksanaan:</label>
+                          <textarea
+                            rows={2}
+                            value={perfInst.instructions || ''}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === perfInst.id ? { ...perfInst, instructions: e.target.value || undefined } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Petunjuk pelaksanaan bagi siswa/guru (opsional)..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h5 className="text-xs font-bold text-slate-700">Aspek yang Dinilai:</h5>
+                        {(!perfInst.aspects || perfInst.aspects.length === 0) && (
+                          <p className="text-slate-500 text-xs italic">Belum ada aspek yang dinilai.</p>
+                        )}
+                        {(perfInst.aspects || []).map((asp, idx) => (
+                          <div key={asp.id} className="p-3 bg-white border border-slate-200 rounded-lg space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-slate-600">Aspek #{idx + 1}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">ID: {asp.id}</span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                              <div className="md:col-span-2">
+                                <label className="block text-xs font-semibold text-slate-600 mb-1">Label Aspek:</label>
+                                <input
+                                  type="text"
+                                  value={asp.label}
+                                  onChange={(e) => {
+                                    const updatedAspects = perfInst.aspects!.map((a) =>
+                                      a.id === asp.id ? { ...a, label: e.target.value } : a
+                                    );
+                                    const updatedInstruments = activePackage.instruments.map((inst) =>
+                                      inst.id === perfInst.id ? { ...perfInst, aspects: updatedAspects } : inst
+                                    );
+                                    updatePackage({ ...activePackage, instruments: updatedInstruments });
+                                  }}
+                                  placeholder="Label aspek..."
+                                  className="text-xs p-1.5 border border-slate-300 rounded w-full bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1">Bobot:</label>
+                                <input
+                                  type="number"
+                                  value={asp.weight !== undefined ? asp.weight : ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value === '' ? undefined : Number(e.target.value);
+                                    const updatedAspects = perfInst.aspects!.map((a) =>
+                                      a.id === asp.id ? { ...a, weight: val } : a
+                                    );
+                                    const updatedInstruments = activePackage.instruments.map((inst) =>
+                                      inst.id === perfInst.id ? { ...perfInst, aspects: updatedAspects } : inst
+                                    );
+                                    updatePackage({ ...activePackage, instruments: updatedInstruments });
+                                  }}
+                                  placeholder="Bobot angka (opsional)..."
+                                  className="text-xs p-1.5 border border-slate-300 rounded w-full bg-white"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">Deskripsi:</label>
+                              <textarea
+                                rows={2}
+                                value={asp.description || ''}
+                                onChange={(e) => {
+                                  const updatedAspects = perfInst.aspects!.map((a) =>
+                                    a.id === asp.id ? { ...a, description: e.target.value || undefined } : a
+                                  );
+                                  const updatedInstruments = activePackage.instruments.map((inst) =>
+                                    inst.id === perfInst.id ? { ...perfInst, aspects: updatedAspects } : inst
+                                  );
+                                  updatePackage({ ...activePackage, instruments: updatedInstruments });
+                                }}
+                                placeholder="Deskripsi aspek yang dinilai..."
+                                className="text-xs p-1.5 border border-slate-300 rounded w-full bg-white"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* OBSERVATION EDITOR */}
-                {activeInstType === 'OBSERVATION' && (
-                  <div className="space-y-4">
-                    <h4 className="text-base font-bold text-slate-800">Lembar Observasi / Pengamatan</h4>
-                    <p className="text-xs text-slate-500">Tentukan aspek-aspek pengamatan yang akan dinilai oleh guru.</p>
-                    <button
-                      onClick={() => {
-                        let obsInst = activePackage.instruments.find((i) => i.type === 'OBSERVATION') as ObservationAssessmentInstrument | undefined;
-                        const newAspect = { id: `asp-${Date.now()}`, label: '', indicator: '' };
+                {activeInstType === 'OBSERVATION' && (() => {
+                  const obsInst = activePackage.instruments.find((i) => i.type === 'OBSERVATION') as ObservationAssessmentInstrument | undefined;
+                  return (
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <h4 className="text-base font-bold text-slate-800">Lembar Observasi / Pengamatan</h4>
+                          <p className="text-xs text-slate-500">Tentukan aspek-aspek pengamatan yang akan dinilai oleh guru.</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            let currentObs = activePackage.instruments.find((i) => i.type === 'OBSERVATION') as ObservationAssessmentInstrument | undefined;
+                            const newAspect = { id: `asp-${Date.now()}`, label: '', indicator: '' };
 
-                        let updatedInstruments = [...activePackage.instruments];
-                        if (!obsInst) {
-                          obsInst = {
-                            id: `inst-obs-${Date.now()}`,
-                            type: 'OBSERVATION',
-                            aspects: [newAspect],
-                          };
-                          updatedInstruments.push(obsInst);
-                        } else {
-                          updatedInstruments = updatedInstruments.map((inst) =>
-                            inst.type === 'OBSERVATION' ? { ...obsInst, aspects: [...obsInst.aspects, newAspect] } : inst
-                          );
-                        }
-                        updatePackage({ ...activePackage, instruments: updatedInstruments });
-                      }}
-                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center gap-1"
-                    >
-                      <Plus className="w-4 h-4" /> Tambah Aspek Observasi
-                    </button>
+                            let updatedInstruments = [...activePackage.instruments];
+                            if (!currentObs) {
+                              currentObs = {
+                                id: `inst-obs-${Date.now()}`,
+                                type: 'OBSERVATION',
+                                aspects: [newAspect],
+                              };
+                              updatedInstruments.push(currentObs);
+                            } else {
+                              updatedInstruments = updatedInstruments.map((inst) =>
+                                inst.type === 'OBSERVATION' ? { ...currentObs!, aspects: [...currentObs!.aspects, newAspect] } : inst
+                              );
+                            }
+                            updatePackage({ ...activePackage, instruments: updatedInstruments });
+                          }}
+                          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center gap-1"
+                        >
+                          <Plus className="w-4 h-4" /> Tambah Aspek Observasi
+                        </button>
+                      </div>
 
-                    {(() => {
-                      const obsInst = activePackage.instruments.find((i) => i.type === 'OBSERVATION') as ObservationAssessmentInstrument | undefined;
-                      if (!obsInst || obsInst.aspects.length === 0) {
-                        return <p className="text-slate-500 text-sm italic">Belum ada aspek observasi.</p>;
-                      }
-                      return (
-                        <div className="space-y-2">
-                          {obsInst.aspects.map((asp, aspIdx) => (
-                            <div key={asp.id} className="flex items-center gap-2 bg-slate-50 p-2 border border-slate-200 rounded">
-                              <span className="text-xs font-bold text-slate-600">{aspIdx + 1}.</span>
+                      {!obsInst ? (
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-xs italic">
+                          Instrumen Observasi belum tersedia pada paket asesmen.
+                        </div>
+                      ) : (
+                        <>
+                          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 mb-1">Judul Instrumen:</label>
                               <input
                                 type="text"
-                                value={asp.label}
+                                value={obsInst.title || ''}
                                 onChange={(e) => {
-                                  const updatedAspects = obsInst!.aspects.map((a) => (a.id === asp.id ? { ...a, label: e.target.value } : a));
                                   const updatedInstruments = activePackage.instruments.map((inst) =>
-                                    inst.type === 'OBSERVATION' ? { ...obsInst!, aspects: updatedAspects } : inst
+                                    inst.id === obsInst.id ? { ...obsInst, title: e.target.value } : inst
                                   );
                                   updatePackage({ ...activePackage, instruments: updatedInstruments });
                                 }}
-                                placeholder="Label aspek (misal: Keaktifan Diskusi)..."
-                                className="text-xs p-1.5 border border-slate-300 rounded flex-1"
+                                placeholder="Judul lembar observasi..."
+                                className="text-xs p-2 border border-slate-300 rounded w-full bg-white font-medium"
                               />
-                              <button
-                                onClick={() => {
-                                  const updatedAspects = obsInst!.aspects.filter((a) => a.id !== asp.id);
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Petunjuk Observasi:</label>
+                                <textarea
+                                  rows={2}
+                                  value={obsInst.instructions || ''}
+                                  onChange={(e) => {
+                                    const updatedInstruments = activePackage.instruments.map((inst) =>
+                                      inst.id === obsInst.id ? { ...obsInst, instructions: e.target.value || undefined } : inst
+                                    );
+                                    updatePackage({ ...activePackage, instruments: updatedInstruments });
+                                  }}
+                                  placeholder="Petunjuk observasi..."
+                                  className="text-xs p-2 border border-slate-300 rounded w-full bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Skema Pencatatan:</label>
+                                <textarea
+                                  rows={2}
+                                  value={obsInst.recordingScheme || ''}
+                                  onChange={(e) => {
+                                    const updatedInstruments = activePackage.instruments.map((inst) =>
+                                      inst.id === obsInst.id ? { ...obsInst, recordingScheme: e.target.value || undefined } : inst
+                                    );
+                                    updatePackage({ ...activePackage, instruments: updatedInstruments });
+                                  }}
+                                  placeholder="Skema pencatatan (misal: Rating scale 1-4, Checklist Ya/Tidak)..."
+                                  className="text-xs p-2 border border-slate-300 rounded w-full bg-white"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {obsInst.aspects.length === 0 ? (
+                            <p className="text-slate-500 text-sm italic">Belum ada aspek observasi.</p>
+                          ) : (
+                            <div className="space-y-3">
+                              <h5 className="text-xs font-bold text-slate-700">Daftar Aspek Observasi:</h5>
+                              {obsInst.aspects.map((asp, aspIdx) => (
+                                <div key={asp.id} className="bg-slate-50 p-3 border border-slate-200 rounded-lg space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-slate-600">Aspek #{aspIdx + 1}</span>
+                                    <button
+                                      onClick={() => {
+                                        const updatedAspects = obsInst.aspects.filter((a) => a.id !== asp.id);
+                                        const updatedInstruments = activePackage.instruments.map((inst) =>
+                                          inst.type === 'OBSERVATION' ? { ...obsInst, aspects: updatedAspects } : inst
+                                        );
+                                        updatePackage({ ...activePackage, instruments: updatedInstruments });
+                                      }}
+                                      className="text-red-500 hover:text-red-700 p-1"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Label Aspek:</label>
+                                    <input
+                                      type="text"
+                                      value={asp.label}
+                                      onChange={(e) => {
+                                        const updatedAspects = obsInst.aspects.map((a) => (a.id === asp.id ? { ...a, label: e.target.value } : a));
+                                        const updatedInstruments = activePackage.instruments.map((inst) =>
+                                          inst.type === 'OBSERVATION' ? { ...obsInst, aspects: updatedAspects } : inst
+                                        );
+                                        updatePackage({ ...activePackage, instruments: updatedInstruments });
+                                      }}
+                                      placeholder="Label aspek (misal: Keaktifan Diskusi)..."
+                                      className="text-xs p-1.5 border border-slate-300 rounded w-full bg-white"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Indikator yang Diamati:</label>
+                                    <textarea
+                                      rows={2}
+                                      value={asp.indicator || ''}
+                                      onChange={(e) => {
+                                        const updatedAspects = obsInst.aspects.map((a) => (a.id === asp.id ? { ...a, indicator: e.target.value || undefined } : a));
+                                        const updatedInstruments = activePackage.instruments.map((inst) =>
+                                          inst.type === 'OBSERVATION' ? { ...obsInst, aspects: updatedAspects } : inst
+                                        );
+                                        updatePackage({ ...activePackage, instruments: updatedInstruments });
+                                      }}
+                                      placeholder="Indikator perilaku yang diamati..."
+                                      className="text-xs p-1.5 border border-slate-300 rounded w-full bg-white"
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ASSIGNMENT EDITOR */}
+                {activeInstType === 'ASSIGNMENT' && (() => {
+                  const assignInst = activePackage.instruments.find((i) => i.type === 'ASSIGNMENT') as AssignmentAssessmentInstrument | undefined;
+                  if (!assignInst) {
+                    return (
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-xs italic">
+                        Instrumen Penugasan belum tersedia pada paket asesmen.
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-4">
+                      <h4 className="text-base font-bold text-slate-800">Instrumen Penugasan</h4>
+                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Judul Instrumen:</label>
+                          <input
+                            type="text"
+                            value={assignInst.title || ''}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === assignInst.id ? { ...assignInst, title: e.target.value } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Judul instrumen penugasan..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Instruksi Penugasan:</label>
+                          <textarea
+                            rows={4}
+                            value={assignInst.instructions}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === assignInst.id ? { ...assignInst, instructions: e.target.value } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Instruksi penugasan bagi siswa..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Hasil / Luaran yang Diharapkan:</label>
+                          <textarea
+                            rows={2}
+                            value={assignInst.expectedOutput || ''}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === assignInst.id ? { ...assignInst, expectedOutput: e.target.value || undefined } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Luaran penugasan (misal: Laporan 2 halaman, Infografis)..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* PROJECT EDITOR */}
+                {activeInstType === 'PROJECT' && (() => {
+                  const projInst = activePackage.instruments.find((i) => i.type === 'PROJECT') as ProjectAssessmentInstrument | undefined;
+                  if (!projInst) {
+                    return (
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-xs italic">
+                        Instrumen Proyek belum tersedia pada paket asesmen.
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-4">
+                      <h4 className="text-base font-bold text-slate-800">Instrumen Asesmen Proyek</h4>
+                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Judul Instrumen:</label>
+                          <input
+                            type="text"
+                            value={projInst.title || ''}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === projInst.id ? { ...projInst, title: e.target.value } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Judul instrumen proyek..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Deskripsi / Brief Proyek:</label>
+                          <textarea
+                            rows={4}
+                            value={projInst.projectBrief}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === projInst.id ? { ...projInst, projectBrief: e.target.value } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Deskripsi dan brief proyek..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Luaran Proyek yang Diharapkan:</label>
+                          <textarea
+                            rows={2}
+                            value={projInst.expectedDeliverable || ''}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === projInst.id ? { ...projInst, expectedDeliverable: e.target.value || undefined } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Luaran akhir proyek yang diharapkan..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* PRODUCT EDITOR */}
+                {activeInstType === 'PRODUCT' && (() => {
+                  const prodInst = activePackage.instruments.find((i) => i.type === 'PRODUCT') as ProductAssessmentInstrument | undefined;
+                  if (!prodInst) {
+                    return (
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-xs italic">
+                        Instrumen Produk belum tersedia pada paket asesmen.
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-4">
+                      <h4 className="text-base font-bold text-slate-800">Instrumen Asesmen Produk</h4>
+                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Judul Instrumen:</label>
+                          <input
+                            type="text"
+                            value={prodInst.title || ''}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === prodInst.id ? { ...prodInst, title: e.target.value } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Judul instrumen produk..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Deskripsi / Spesifikasi Produk:</label>
+                          <textarea
+                            rows={4}
+                            value={prodInst.productBrief}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === prodInst.id ? { ...prodInst, productBrief: e.target.value } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Spesifikasi atau instruksi pembuatan produk..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Produk / Hasil yang Diharapkan:</label>
+                          <textarea
+                            rows={2}
+                            value={prodInst.expectedProduct || ''}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === prodInst.id ? { ...prodInst, expectedProduct: e.target.value || undefined } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Produk atau artefak yang diharapkan dihasilkan siswa..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* PORTFOLIO EDITOR */}
+                {activeInstType === 'PORTFOLIO' && (() => {
+                  const portInst = activePackage.instruments.find((i) => i.type === 'PORTFOLIO') as PortfolioAssessmentInstrument | undefined;
+                  if (!portInst) {
+                    return (
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-xs italic">
+                        Instrumen Portofolio belum tersedia pada paket asesmen.
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <h4 className="text-base font-bold text-slate-800">Instrumen Portofolio</h4>
+                        <button
+                          onClick={() => {
+                            const updatedReqs = [...(portInst.evidenceRequirements || []), ''];
+                            const updatedInstruments = activePackage.instruments.map((inst) =>
+                              inst.id === portInst.id ? { ...portInst, evidenceRequirements: updatedReqs } : inst
+                            );
+                            updatePackage({ ...activePackage, instruments: updatedInstruments });
+                          }}
+                          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center gap-1"
+                        >
+                          <Plus className="w-4 h-4" /> Tambah Persyaratan Bukti
+                        </button>
+                      </div>
+
+                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Judul Instrumen:</label>
+                          <input
+                            type="text"
+                            value={portInst.title || ''}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === portInst.id ? { ...portInst, title: e.target.value } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Judul instrumen portofolio..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Petunjuk Portofolio:</label>
+                          <textarea
+                            rows={2}
+                            value={portInst.instructions || ''}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === portInst.id ? { ...portInst, instructions: e.target.value || undefined } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder="Petunjuk portofolio (opsional)..."
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h5 className="text-xs font-bold text-slate-700">Persyaratan Bukti:</h5>
+                        {(!portInst.evidenceRequirements || portInst.evidenceRequirements.length === 0) && (
+                          <p className="text-slate-500 text-xs italic">Belum ada persyaratan bukti portofolio.</p>
+                        )}
+                        {(portInst.evidenceRequirements || []).map((req, rIdx) => (
+                          <div key={rIdx} className="flex items-center gap-2 bg-white p-2 border border-slate-200 rounded-lg">
+                            <span className="text-xs font-bold text-slate-600 w-6">{rIdx + 1}.</span>
+                            <input
+                              type="text"
+                              value={req}
+                              onChange={(e) => {
+                                const updatedReqs = portInst.evidenceRequirements.map((r, idx) =>
+                                  idx === rIdx ? e.target.value : r
+                                );
+                                const updatedInstruments = activePackage.instruments.map((inst) =>
+                                  inst.id === portInst.id ? { ...portInst, evidenceRequirements: updatedReqs } : inst
+                                );
+                                updatePackage({ ...activePackage, instruments: updatedInstruments });
+                              }}
+                              placeholder="Dokumen / bukti portofolio yang dipersyaratkan..."
+                              className="text-xs p-1.5 border border-slate-300 rounded flex-1 bg-white"
+                            />
+                            <button
+                              onClick={() => {
+                                const updatedReqs = portInst.evidenceRequirements.filter((_, idx) => idx !== rIdx);
+                                const updatedInstruments = activePackage.instruments.map((inst) =>
+                                  inst.id === portInst.id ? { ...portInst, evidenceRequirements: updatedReqs } : inst
+                                );
+                                updatePackage({ ...activePackage, instruments: updatedInstruments });
+                              }}
+                              className="text-red-500 hover:text-red-700 p-1"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* SELF & PEER ASSESSMENT EDITOR */}
+                {(activeInstType === 'SELF_ASSESSMENT' || activeInstType === 'PEER_ASSESSMENT') && (() => {
+                  const selfPeerInst = activePackage.instruments.find((i) => i.type === activeInstType) as SelfPeerAssessmentInstrument | undefined;
+                  const isSelf = activeInstType === 'SELF_ASSESSMENT';
+                  const label = isSelf ? 'Penilaian Diri' : 'Penilaian Antar-Teman';
+                  if (!selfPeerInst) {
+                    return (
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-xs italic">
+                        Instrumen {label} belum tersedia pada paket asesmen.
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-4">
+                      <h4 className="text-base font-bold text-slate-800">Instrumen {label}</h4>
+                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Judul Instrumen:</label>
+                          <input
+                            type="text"
+                            value={selfPeerInst.title || ''}
+                            onChange={(e) => {
+                              const updatedInstruments = activePackage.instruments.map((inst) =>
+                                inst.id === selfPeerInst.id ? { ...selfPeerInst, title: e.target.value } : inst
+                              );
+                              updatePackage({ ...activePackage, instruments: updatedInstruments });
+                            }}
+                            placeholder={`Judul instrumen ${label.toLowerCase()}...`}
+                            className="text-xs p-2 border border-slate-300 rounded w-full bg-white font-medium"
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">Petunjuk:</label>
+                            <textarea
+                              rows={2}
+                              value={selfPeerInst.instructions || ''}
+                              onChange={(e) => {
+                                const updatedInstruments = activePackage.instruments.map((inst) =>
+                                  inst.id === selfPeerInst.id ? { ...selfPeerInst, instructions: e.target.value || undefined } : inst
+                                );
+                                updatePackage({ ...activePackage, instruments: updatedInstruments });
+                              }}
+                              placeholder="Petunjuk pengerjaan..."
+                              className="text-xs p-2 border border-slate-300 rounded w-full bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">Skema Respon:</label>
+                            <textarea
+                              rows={2}
+                              value={selfPeerInst.responseScheme || ''}
+                              onChange={(e) => {
+                                const updatedInstruments = activePackage.instruments.map((inst) =>
+                                  inst.id === selfPeerInst.id ? { ...selfPeerInst, responseScheme: e.target.value || undefined } : inst
+                                );
+                                updatePackage({ ...activePackage, instruments: updatedInstruments });
+                              }}
+                              placeholder="Skema respon (misal: Skala Likert 1-4, Ya/Tidak)..."
+                              className="text-xs p-2 border border-slate-300 rounded w-full bg-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h5 className="text-xs font-bold text-slate-700">Daftar Pernyataan ({selfPeerInst.items?.length || 0} butir):</h5>
+                        {(!selfPeerInst.items || selfPeerInst.items.length === 0) && (
+                          <p className="text-slate-500 text-xs italic">Belum ada butir pernyataan.</p>
+                        )}
+                        {(selfPeerInst.items || []).map((item, idx) => (
+                          <div key={item.id} className="p-3 bg-white border border-slate-200 rounded-lg space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
+                                #{idx + 1}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">ID: {item.id}</span>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">Pernyataan:</label>
+                              <textarea
+                                rows={2}
+                                value={item.statement}
+                                onChange={(e) => {
+                                  const updatedItems = selfPeerInst.items.map((it) =>
+                                    it.id === item.id ? { ...it, statement: e.target.value } : it
+                                  );
                                   const updatedInstruments = activePackage.instruments.map((inst) =>
-                                    inst.type === 'OBSERVATION' ? { ...obsInst!, aspects: updatedAspects } : inst
+                                    inst.id === selfPeerInst.id ? { ...selfPeerInst, items: updatedItems } : inst
                                   );
                                   updatePackage({ ...activePackage, instruments: updatedInstruments });
                                 }}
-                                className="text-red-500 hover:text-red-700 p-1"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                                placeholder="Teks pernyataan refleksi/penilaian..."
+                                className="text-xs p-2 border border-slate-300 rounded w-full bg-white"
+                              />
                             </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">Kategori (opsional):</label>
+                              <input
+                                type="text"
+                                value={item.category || ''}
+                                onChange={(e) => {
+                                  const updatedItems = selfPeerInst.items.map((it) =>
+                                    it.id === item.id ? { ...it, category: e.target.value || undefined } : it
+                                  );
+                                  const updatedInstruments = activePackage.instruments.map((inst) =>
+                                    inst.id === selfPeerInst.id ? { ...selfPeerInst, items: updatedItems } : inst
+                                  );
+                                  updatePackage({ ...activePackage, instruments: updatedInstruments });
+                                }}
+                                placeholder="Kategori aspek (misal: Kerjasama, Kejujuran)..."
+                                className="text-xs p-1.5 border border-slate-300 rounded w-full bg-white"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
-                {/* OTHER INSTRUMENTS FALLBACK EDITOR */}
-                {activeInstType && activeInstType !== 'WRITTEN_TEST' && activeInstType !== 'OBSERVATION' && (
-                  <div className="space-y-4">
-                    <h4 className="text-base font-bold text-slate-800">Pengaturan Instrumen ({activeInstType})</h4>
-                    <p className="text-xs text-slate-500">Lengkapi detail dan instruksi instrumen sesuai rencana pembelajaran.</p>
-                  </div>
-                )}
+                {/* UNKNOWN / OTHER INSTRUMENTS GENERIC FALLBACK EDITOR */}
+                {activeInstType &&
+                  activeInstType !== 'WRITTEN_TEST' &&
+                  activeInstType !== 'ORAL_TEST' &&
+                  activeInstType !== 'PERFORMANCE' &&
+                  activeInstType !== 'OBSERVATION' &&
+                  activeInstType !== 'ASSIGNMENT' &&
+                  activeInstType !== 'PROJECT' &&
+                  activeInstType !== 'PRODUCT' &&
+                  activeInstType !== 'PORTFOLIO' &&
+                  activeInstType !== 'SELF_ASSESSMENT' &&
+                  activeInstType !== 'PEER_ASSESSMENT' && (
+                    <div className="space-y-4">
+                      <h4 className="text-base font-bold text-slate-800">Pengaturan Instrumen ({activeInstType})</h4>
+                      <p className="text-xs text-slate-500">Lengkapi detail dan instruksi instrumen sesuai rencana pembelajaran.</p>
+                    </div>
+                  )}
               </div>
             )}
 
@@ -1977,33 +2745,73 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
                             <p className="text-xs text-slate-400 italic">Belum ada kriteria. Silakan tambahkan kriteria penilaian.</p>
                           ) : (
                             rub.criteria.map((crit, cIdx) => (
-                              <div key={crit.id} className="flex items-center gap-2">
-                                <span className="text-xs font-semibold text-slate-500 w-5">{cIdx + 1}.</span>
-                                <input
-                                  type="text"
-                                  value={crit.label}
-                                  onChange={(e) => {
-                                    const updatedCrits = rub.criteria.map((c) => (c.id === crit.id ? { ...c, label: e.target.value } : c));
-                                    const updated = activePackage.rubrics.map((r) =>
-                                      r.id === rub.id ? { ...r, criteria: updatedCrits } : r
-                                    );
-                                    updatePackage({ ...activePackage, rubrics: updated });
-                                  }}
-                                  placeholder="Label kriteria (misal: Ketepatan Konsep, Sistematika)..."
-                                  className="text-xs p-1.5 border border-slate-300 rounded flex-1 bg-white"
-                                />
-                                <button
-                                  onClick={() => {
-                                    const updatedCrits = rub.criteria.filter((c) => c.id !== crit.id);
-                                    const updated = activePackage.rubrics.map((r) =>
-                                      r.id === rub.id ? { ...r, criteria: updatedCrits } : r
-                                    );
-                                    updatePackage({ ...activePackage, rubrics: updated });
-                                  }}
-                                  className="text-red-500 hover:text-red-700 p-1"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                              <div key={crit.id} className="p-2.5 bg-white border border-slate-200 rounded space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-slate-700">Kriteria #{cIdx + 1}</span>
+                                  <button
+                                    onClick={() => {
+                                      const updatedCrits = rub.criteria.filter((c) => c.id !== crit.id);
+                                      const updated = activePackage.rubrics.map((r) =>
+                                        r.id === rub.id ? { ...r, criteria: updatedCrits } : r
+                                      );
+                                      updatePackage({ ...activePackage, rubrics: updated });
+                                    }}
+                                    className="text-red-500 hover:text-red-700 p-1"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                  <div className="md:col-span-2">
+                                    <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Label Kriteria:</label>
+                                    <input
+                                      type="text"
+                                      value={crit.label}
+                                      onChange={(e) => {
+                                        const updatedCrits = rub.criteria.map((c) => (c.id === crit.id ? { ...c, label: e.target.value } : c));
+                                        const updated = activePackage.rubrics.map((r) =>
+                                          r.id === rub.id ? { ...r, criteria: updatedCrits } : r
+                                        );
+                                        updatePackage({ ...activePackage, rubrics: updated });
+                                      }}
+                                      placeholder="Label kriteria (misal: Ketepatan Konsep)..."
+                                      className="text-xs p-1.5 border border-slate-300 rounded w-full bg-white"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Bobot:</label>
+                                    <input
+                                      type="number"
+                                      value={crit.weight !== undefined ? crit.weight : ''}
+                                      onChange={(e) => {
+                                        const val = e.target.value === '' ? undefined : Number(e.target.value);
+                                        const updatedCrits = rub.criteria.map((c) => (c.id === crit.id ? { ...c, weight: val } : c));
+                                        const updated = activePackage.rubrics.map((r) =>
+                                          r.id === rub.id ? { ...r, criteria: updatedCrits } : r
+                                        );
+                                        updatePackage({ ...activePackage, rubrics: updated });
+                                      }}
+                                      placeholder="Bobot angka (opsional)..."
+                                      className="text-xs p-1.5 border border-slate-300 rounded w-full bg-white"
+                                    />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Indikator:</label>
+                                  <textarea
+                                    rows={2}
+                                    value={crit.indicator || ''}
+                                    onChange={(e) => {
+                                      const updatedCrits = rub.criteria.map((c) => (c.id === crit.id ? { ...c, indicator: e.target.value || undefined } : c));
+                                      const updated = activePackage.rubrics.map((r) =>
+                                        r.id === rub.id ? { ...r, criteria: updatedCrits } : r
+                                      );
+                                      updatePackage({ ...activePackage, rubrics: updated });
+                                    }}
+                                    placeholder="Indikator ketercapaian kriteria..."
+                                    className="text-xs p-1.5 border border-slate-300 rounded w-full bg-white"
+                                  />
+                                </div>
                               </div>
                             ))
                           )}
@@ -2100,6 +2908,103 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
                     ))}
                   </div>
                 )}
+
+                {/* PEDOMAN PENSKORAN SECTION */}
+                <div className="pt-6 border-t border-slate-200 space-y-4">
+                  <div>
+                    <h4 className="text-base font-bold text-slate-800 mb-1">Pedoman Penskoran</h4>
+                    <p className="text-xs text-slate-500">
+                      Pedoman penilaian dan penskoran untuk item/instrumen yang membutuhkan panduan penilaian khusus.
+                    </p>
+                  </div>
+
+                  {(!activePackage.scoringGuides || activePackage.scoringGuides.length === 0) ? (
+                    <p className="text-slate-500 text-sm italic">Belum ada pedoman penskoran pada perangkat ini.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {activePackage.scoringGuides.map((guide) => (
+                        <div key={guide.id} className="p-4 border border-slate-200 rounded-lg bg-slate-50 space-y-3">
+                          <div className="flex justify-between items-center gap-2">
+                            <div className="flex-1">
+                              <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Judul Pedoman:</label>
+                              <input
+                                type="text"
+                                value={guide.title}
+                                onChange={(e) => {
+                                  const updatedGuides = activePackage.scoringGuides.map((g) =>
+                                    g.id === guide.id ? { ...g, title: e.target.value } : g
+                                  );
+                                  updatePackage({ ...activePackage, scoringGuides: updatedGuides });
+                                }}
+                                placeholder="Judul pedoman penskoran..."
+                                className="font-bold text-sm bg-white p-1.5 border border-slate-300 rounded text-slate-800 w-full"
+                              />
+                            </div>
+                            <div className="w-48">
+                              <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Tipe Panduan (Read-Only):</label>
+                              <input
+                                type="text"
+                                readOnly
+                                value={guide.guideType}
+                                className="text-xs p-1.5 border border-slate-200 rounded bg-slate-100 text-slate-600 font-mono w-full cursor-not-allowed"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="md:col-span-2">
+                              <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Instruksi Penskoran:</label>
+                              <textarea
+                                rows={2}
+                                value={guide.instructions || ''}
+                                onChange={(e) => {
+                                  const updatedGuides = activePackage.scoringGuides.map((g) =>
+                                    g.id === guide.id ? { ...g, instructions: e.target.value || undefined } : g
+                                  );
+                                  updatePackage({ ...activePackage, scoringGuides: updatedGuides });
+                                }}
+                                placeholder="Petunjuk/instruksi pemberian skor..."
+                                className="text-xs p-1.5 border border-slate-300 rounded w-full bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Skor Maksimal:</label>
+                              <input
+                                type="number"
+                                value={guide.maxScore !== undefined ? guide.maxScore : ''}
+                                onChange={(e) => {
+                                  const val = e.target.value === '' ? undefined : Number(e.target.value);
+                                  const updatedGuides = activePackage.scoringGuides.map((g) =>
+                                    g.id === guide.id ? { ...g, maxScore: val } : g
+                                  );
+                                  updatePackage({ ...activePackage, scoringGuides: updatedGuides });
+                                }}
+                                placeholder="Skor maks..."
+                                className="text-xs p-1.5 border border-slate-300 rounded w-full bg-white"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Catatan Tambahan:</label>
+                            <textarea
+                              rows={2}
+                              value={guide.notes || ''}
+                              onChange={(e) => {
+                                const updatedGuides = activePackage.scoringGuides.map((g) =>
+                                  g.id === guide.id ? { ...g, notes: e.target.value || undefined } : g
+                                );
+                                updatePackage({ ...activePackage, scoringGuides: updatedGuides });
+                              }}
+                              placeholder="Catatan tambahan penskoran (opsional)..."
+                              className="text-xs p-1.5 border border-slate-300 rounded w-full bg-white"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
